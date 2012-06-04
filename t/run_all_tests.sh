@@ -1,12 +1,14 @@
 #! /bin/bash
 
+cd `dirname "$0"`
+
 export PERL5LIB=../lib
 
 n=0
 ok=0
 failed_test=''
 
-for i in t_*
+for i in *.t
 do
   if [[ -x "$i" ]]
   then
