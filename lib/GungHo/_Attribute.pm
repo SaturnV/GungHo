@@ -12,7 +12,7 @@ use feature ':5.10';
 
 use Scalar::Util;
 
-use GungHo::Names qw( :HOOK_NAMES :STASH_KEYS );
+use GungHo::Names qw( :HOOK_NAMES );
 use GungHo::Utils qw( _ProcessParameters );
 use GungHo::CodeGenerator;
 
@@ -31,6 +31,8 @@ our $HK_type = 'type';
 our $HK_method_types = 'method_types';
 our $HK_methods_reported = 'methods_reported';
 our $HK_methods_generated = 'methods_generated';
+our $HK_code_generator = 'code_generator';
+our $HK_parent = 'parent';
 our $HK_finalized = 'finalized';
 
 our @DefaultMethodTypes = qw( rawgetter getter rawsetter setter );
@@ -112,9 +114,9 @@ our %DefaultCodePatterns =
             $_[2]->AddNamedPattern('class_e', '$_[2]');
             $_[2]->AddNamedPattern('stash_e', '$_[3]');
             $_[2]->AddNamedPattern('image_e',
-                '#{stash_e}#->{$S_new_image}');
+                '#{stash_e}#->{$GungHo::Names::S_new_image}');
             $_[2]->AddNamedPattern('args_e',
-                '#{stash_e}#->{$S_new_arguments}');
+                '#{stash_e}#->{$GungHo::Names::S_new_arguments}');
             $_[2]->AddNamedPattern('arg_value_e',
                 "#{args_e}#->{#{attribute_name_e}#}");
           },
@@ -126,7 +128,6 @@ our %DefaultCodePatterns =
             $_[2]->AddNamedPattern('self_e', '$_[2]');
             $_[2]->AddNamedPattern('stash_e', '$_[3]');
             $_[2]->AddNamedPattern('arg_value_e', '#{get_e}#');
-            # $_[2]->AddNamedPattern('image_e', '#{stash_e}#->{$S_new_image}');
             return undef;
           },
 
@@ -248,36 +249,6 @@ our %DefaultCodePatterns =
             }
             
             return $code;
-          },
-
-      # Validate
-      # type does this from a hook
-
-      # return
-
-      # input: return_value_e, return_value_opt_e
-      'return_s' => sub
-          {
-            my $ret;
-            if (defined($_[2]->GetNamedPattern('return_value_e')))
-            {
-              $ret = $_[2]->ExpandPattern("return #{return_value_e}#;\n");
-              $_[2]->MakeImportant();
-            }
-            elsif (defined($_[2]->GetNamedPattern('return_value_opt_e')))
-            {
-              $ret = $_[2]->ExpandPattern("return #{return_value_opt_e}#;\n");
-            }
-            return $ret;
-          },
-      'return_undef_s' => "return undef;\n",
-
-      # misc
-
-      'important_x' => sub
-          {
-            $_[2]->MakeImportant();
-            return undef;
           }
     );
 
@@ -297,9 +268,12 @@ sub new
         $HK_name => $attr_name,
         $HK_orig_spec => $attr_spec,
         $HK_spec => { %{$attr_spec} },
+        $HK_parent => $meta_class
       }, $class);
   $self->{$HK_super_attrs} = $super_attrs
     if ($super_attrs && @{$super_attrs});
+  Scalar::Util::weaken($self->{$HK_parent});
+
   $attr_spec = { %{$attr_spec} };
 
   # Merge super
@@ -394,75 +368,75 @@ sub _gh_IsCompatibleWith
 
 # ==== Code Generator =========================================================
 
-sub _gh_GenerateCode
+sub _gh_HookUpCodeGenerator
 {
-  my $self = shift;
-  my $what = shift;
-  my $template = shift;
-  return $self->{'code_generator'}->Generate($what, $template, @_);
+  my $self = $_[0];
+  my $cg = $_[1];
+  my $cg_owner = $_[2];
+
+  my $attr_name = $self->{$HK_name};
+
+  my $patterns = { %DefaultCodePatterns };
+  $patterns->{'attribute_name_e'} = $cg->QuoteString($attr_name);
+  $cg->AddNamedPattern($patterns);
+
+  $self->{$HK_parent}->_gh_HookUpCodeGenerator($cg, $cg_owner)
+    if ($self eq $cg_owner);
+
+  $cg->_gh_AddHook('new_stash', $self =>
+      # __hook__($hook_runner, $hook_name, $cg, $stash)
+      sub
+      {
+        $self->__PrepareStash($_[3], $_[2]);
+        return undef;
+      });
+
+  # __hook__($hook_runner, $hook_name, $cg)
+  $self->_gh_RunHooks($H_cg_prepare_code_generator, $self, $cg);
+
+  # TODO This is ugly here
+  $cg->AddNamedPattern('set_e', '#{important_x}##{write_attribute_e}#')
+      if (!$cg->GetNamedPattern('set_e') &&
+          $cg->GetNamedPattern('write_attribute_e'));
+  $cg->AddNamedPattern('delete_e', '#{delete_attribute_e}#')
+      if (!$cg->GetNamedPattern('delete_e') &&
+          $cg->GetNamedPattern('delete_attribute_e'));
 }
 
-sub _gh_NewStash
+sub __PrepareStash
 {
-  my $self = shift;
-  my $stash = GungHo::Utils::make_hashref(@_);
+  my $self = $_[0];
+  my $stash = $_[1];
 
   my %defaults =
       (
         'attribute' => $self,
         'attribute_name' => $self->{$HK_name},
         'attribute_type' => $self->{$HK_type},
-        'cg_owner' => 'attribute'
       );
   foreach my $k (keys(%defaults))
   {
     $stash->{$k} = $defaults{$k}
       unless exists($stash->{$k});
   }
-
-  return $stash;
 }
+
+sub _DefaultCodeTemplate
+{
+  my $t = $DefaultCodePatterns{$_[1]};
+  return (ref($t) eq 'ARRAY') ? $t : [ $_[1] ];
+}
+
+# ---- _gh_Assemble -----------------------------------------------------------
 
 sub _gh_Assemble
 {
+  # my ($self, $what, $stash) = @_;
   my $self = shift;
-  my $assembler = shift;
-  my $what = shift;
-  my $code;
-
-  my $method = $self->can("_gh_${assembler}_${what}") ||
-      "_gh_Default${assembler}";
-  if (defined($code = $self->$method("attribute_${what}_s", @_)) &&
-      (ref($code) ne 'CODE'))
-  {
-    $code = "$code";
-    if ($code eq '')
-    {
-      undef($code);
-    }
-    else
-    {
-      $code = "sub { $code }";
-
-      my $stash = $_[0];
-      if ($stash->{'enclose'})
-      {
-        my $enclose = '';
-        foreach my $name (keys(%{$stash->{'enclose'}}))
-        {
-          $enclose .= "my \$$name = \$stash->{'enclose'}->{'$name'};\n"
-        }
-        $code = $enclose . $code;
-      }
-
-      # warn "++++ $what\n$code\n----";
-
-      $code = eval $code or
-        die "TODO::InternalError >>$@<<";
-    }
-  }
-
-  return $code;
+  my $what = shift; $what = "attribute_${what}_s";
+  my $template = $self->_DefaultCodeTemplate($what, @_) or
+    die "TODO::No code template for '$what'";
+  return $self->{$HK_code_generator}->Assemble($what, $template, @_);
 }
 
 # ==== Type ===================================================================
@@ -554,68 +528,26 @@ sub _gh_GetGeneratedMethodName
 
 sub _gh_BuildMethod
 {
-  my ($self, $meta_class, $method_type, $method_name) = @_;
-  my $stash = $self->_gh_NewStash(
+  my ($self, $method_type, $method_name) = @_;
+  my $stash = $self->{$HK_code_generator}->NewStash(
       {
-        'meta_class'  => $meta_class,
-        'method_type' => $method_type,
+        'cg_owner' => $self,
         'method_name' => $method_name,
+        'method_type' => $method_type,
         'code_type' => 'method'
       });
-  return $self->_gh_Assemble('AssembleMethod', $method_type, $stash) ||
+  return $self->_gh_Assemble($method_type, $stash) ||
       sub {};
-}
-
-# ---- _gh_DefaultMethodTemplate ----------------------------------------------
-
-# $self->_gh_DefaultMethodTemplate($what, $stash)
-sub _gh_DefaultMethodTemplate
-{
-  return $DefaultCodePatterns{$_[1]};
-}
-
-# ---- _gh_DefaultAssembleMethod ----------------------------------------------
-
-sub _gh_DefaultAssembleMethod
-{
-  # my ($self, $what, $stash) = @_;
-  my $self = shift;
-  my $what = shift;
-  my $template = $self->_gh_DefaultMethodTemplate($what, @_) or
-    die "TODO::No code template for '$what'";
-  return $self->_gh_GenerateCode($what, $template, @_);
 }
 
 # ==== Construction ===========================================================
 
-sub _gh_DefaultHookTemplate
-{
-  my $t = $DefaultCodePatterns{$_[1]};
-  return (ref($t) eq 'ARRAY') ? $t : [ $_[1] ];
-}
-
-sub _gh_DefaultAssembleHook
-{
-  # my ($self, $what, $stash) = @_;
-  my $self = shift;
-  my $what = shift;
-  my $template = $self->_gh_DefaultHookTemplate($what, @_) or
-    die "TODO::No code template for '$what'";
-  return $self->_gh_GenerateCode($what, $template, @_);
-  # my $code = $self->_gh_GenerateCode($what, $template, @_);
-  # warn "*** hook codegen $what $code"
-  #   if $code;
-  # warn "*** hook codegen $what nil"
-  #   unless $code;
-  # return $code;
-}
-
-# $self->_gh_BuildConstructorHooks($meta_class)
+# $self->_gh_BuildConstructorHooks()
 sub _gh_BuildConstructorHooks
 {
   my $self = $_[0];
-  my $meta_class = $_[1];
   my $attr_name = $self->{$HK_name};
+  my $meta_class = $self->{$HK_parent};
 
   my ($hook_code, $stash);
   foreach my $hook_name (
@@ -625,13 +557,14 @@ sub _gh_BuildConstructorHooks
       $H_hnpa_consume_args, $H_hnpa_expand_macros,
       $H_init_Build, $H_init_Validate, $H_init_InitParts, $H_init_InitWhole )
   {
-    $stash = $self->_gh_NewStash(
-      {
-        'meta_class'  => $meta_class,
+    $stash = $self->{$HK_code_generator}->NewStash(
+      { 
+        'cg_owner' => $self,
         'hook_name' => $hook_name,
+        'hook_type' => $hook_name,
         'code_type' => 'hook'
       });
-    $hook_code = $self->_gh_Assemble('AssembleHook', $hook_name, $stash);
+    $hook_code = $self->_gh_Assemble($hook_name, $stash);
     $meta_class->_gh_AddHook($hook_name,
         "${ModName}[$attr_name]" => $hook_code)
       if $hook_code;
@@ -645,27 +578,12 @@ sub _gh_BuildConstructorHooks
 sub _gh_Build
 {
   my $self = $_[0];
-  my $meta_class = $_[1];
-  my $attr_name = $self->{$HK_name};
+  my $meta_class = $self->{$HK_parent};
 
   # Code Generator
   {
-    my $cg = $self->{'code_generator'} = GungHo::CodeGenerator->new();
-
-    my $patterns = { %DefaultCodePatterns };
-    $patterns->{'attribute_name_e'} = $cg->QuoteString($attr_name);
-    $cg->AddNamedPattern($patterns);
-
-    # __hook__($hook_runner, $hook_name, $cg)
-    $self->_gh_RunHooks($H_cg_prepare_code_generator, $cg);
-
-    # TODO This is ugly here
-    $cg->AddNamedPattern('set_e', '#{important_x}##{write_attribute_e}#')
-        if (!$cg->GetNamedPattern('set_e') &&
-            $cg->GetNamedPattern('write_attribute_e'));
-    $cg->AddNamedPattern('delete_e', '#{delete_attribute_e}#')
-        if (!$cg->GetNamedPattern('delete_e') &&
-            $cg->GetNamedPattern('delete_attribute_e'));
+    my $cg = $self->{$HK_code_generator} = GungHo::CodeGenerator->new();
+    $self->_gh_HookUpCodeGenerator($cg, $self);
   }
 
   # Methods
@@ -677,7 +595,7 @@ sub _gh_Build
 
     $method_ref = ($method_name_gen &&
                    $meta_class->_gh_ShouldProvideMethod($method_name_gen)) ?
-        $self->_gh_BuildMethod($meta_class, $method_type, $method_name_gen) :
+        $self->_gh_BuildMethod($method_type, $method_name_gen) :
         undef;
     $meta_class->_gh_AddMethodImplementation(
         $method_name_gen, $method_ref, $self, $method_type)
@@ -686,10 +604,10 @@ sub _gh_Build
   }
 
   # Constructor
-  $self->_gh_BuildConstructorHooks($meta_class);
+  $self->_gh_BuildConstructorHooks();
 
   # Cleanup
-  delete($self->{'code_generator'})->Destroy();
+  delete($self->{$HK_code_generator})->Destroy();
   $self->{$HK_finalized} = 1;
 }
 

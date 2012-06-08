@@ -10,6 +10,8 @@ use strict;
 use warnings;
 use feature ':5.10';
 
+use parent qw( GungHo::Trait::_Base );
+
 use GungHo::Names qw( :HOOK_NAMES );
 
 ###### VARS ###################################################################
@@ -20,77 +22,23 @@ our $ModName = __PACKAGE__;
 
 sub new
 {
-  # my ($class, $args) = @_;
-  return bless({ 'args' => $_[1] }, $_[0]);
+  # my ($class, $host, $args) = @_;
+  return bless({ 'args' => $_[2] }, $_[0]);
 }
 
-sub TraitName
-{
-  my $class = ref($_[0]) || $_[0];
-  my ($trait_name) = $class =~ /Trait::(\w+)/ or
-    die 'TODO::TraitName';
-  return $trait_name;
-}
+# ==== _gh_Attr_PrepareCodeGenerator ==========================================
 
-sub _gh_SetupTrait
+# $self->__hook__($hook_runner, $hook_name, $attr, $cg)
+sub _gh_Attr_PrepareCodeGenerator
 {
   my $self = $_[0];
-  my $host = $_[1];
-  # my $attr_spec = $_[2];
-
-  my $trait_name = $self->TraitName();
-  my @flags = keys(%{$host->GetPropertyHashRef()});
-  if (!$host->HasFlag("No$trait_name"))
-  {
-    if ($host->isa('GungHo::Class'))
-    {
-      $host->_gh_AddHook('gh_class_add_attribute',
-          $ModName => sub { $self->_gh_PatchAttribute(@_) });
-    }
-    elsif ($host->isa('GungHo::_Attribute'))
-    {
-      $host->_gh_AddHook($H_cg_prepare_code_generator,
-          $ModName => sub { $self->_gh_PrepareCodeGenerator(@_) });
-    }
-  }
-}
-
-# ==== _gh_PatchAttribute =====================================================
-
-# $self->__hook__($hook_runner, $hook_name, $attr_name, $attr_spec_in)
-sub _gh_PatchAttribute
-{
-  my $self = shift;
-  my $attr_spec_out = shift->Continue(@_);
-
-  if ($attr_spec_out)
-  {
-    $attr_spec_out = { %{$attr_spec_out} };
-
-    my $traits = $attr_spec_out->{'traits'} =
-        $attr_spec_out->{'traits'} ?
-            GungHo::Utils::make_ixhash($attr_spec_out->{'traits'}) :
-            Tie::IxHash->new();
-    my $trait_name = $self->TraitName();
-    $traits->Push( $trait_name => $self->{'args'} )
-      unless $traits->EXISTS($trait_name);
-  }
-
-  return $attr_spec_out;
-}
-
-# ==== _gh_PrepareCodeGenerator ===============================================
-
-# $self->__hook__($hook_runner, $hook_name, $cg)
-sub _gh_PrepareCodeGenerator
-{
-  my $self = $_[0];
-  my $cg = $_[3];
+  my $cg = $_[4];
 
   $cg->Patch("${ModName}_s",
       'into' => 'build_s',
       'before' => 'build_builder_s');
 
+  # TODO: Simplify this
   $cg->_gh_AddHook('gh_cg_do_step',
       $ModName =>
           # __hook__($hook_runner, $hook_name, $cg, $what, $step, $stash)

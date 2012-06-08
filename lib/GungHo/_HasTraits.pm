@@ -89,7 +89,7 @@ sub _gh_AddTrait
   # Load and instantiate trait
   my $trait_class = GungHo::Registry::get_or_load_trait($trait_name);
   my $trait_obj = $trait_class->can('new') ?
-      $trait_class->new($trait_args) : $trait_class;
+      $trait_class->new($self, $trait_args) : $trait_class;
 
   # Let it hook into code generation
   $trait_obj->_gh_SetupTrait($self, $spec)

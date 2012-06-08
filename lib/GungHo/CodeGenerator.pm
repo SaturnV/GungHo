@@ -30,6 +30,32 @@ our $HKS_args = 'args';
 our $HKS_hooks = 'hooks';
 our $HKS_patterns = 'patterns';
 
+our %DefaultPatterns =
+    (
+      # input: return_value_e, return_value_opt_e
+      'return_s' => sub
+          {
+            my $ret;
+            if (defined($_[2]->GetNamedPattern('return_value_e')))
+            {
+              $ret = $_[2]->ExpandPattern("return #{return_value_e}#;\n");
+              $_[2]->MakeImportant();
+            }
+            elsif (defined($_[2]->GetNamedPattern('return_value_opt_e')))
+            {
+              $ret = $_[2]->ExpandPattern("return #{return_value_opt_e}#;\n");
+            }
+            return $ret;
+          },
+      'return_undef_s' => "return undef;\n",
+
+      'important_x' => sub
+          {
+            $_[2]->MakeImportant();
+            return undef;
+          }
+    );
+
 ###### SUBS ###################################################################
 
 ###### METHODS ################################################################
@@ -39,11 +65,25 @@ our $HKS_patterns = 'patterns';
 sub new
 {
   my $class = shift;
+
   my $self = GungHo::Utils::make_hashref(@_);
   $self->{$HK_state} = [ { $HKS_patterns => {} } ];
   $self->{$HK_next_my_variable_seq} = 0;
   $self->{$HK_depth} = 0;
-  return bless($self, $class);
+  bless($self, $class);
+
+  $self->AddNamedPattern(\%DefaultPatterns);
+
+  return $self;
+}
+
+sub new_prepared
+{
+  my $class = shift;
+  my $owner = shift;
+  my $self = $class->new(@_);
+  $owner->_gh_HookUpCodeGenerator($self, $owner);
+  return $self;
 }
 
 # ==== Destructor =============================================================
@@ -158,6 +198,50 @@ sub _Generate
 
   $self->Pop();
 
+  return $code;
+}
+
+# ==== Assemble ===============================================================
+
+# $self->Assemble($what, $template, $stash, ...)
+sub Assemble
+{
+  my $self = shift;
+  my $code;
+
+  if (defined($code = $self->Generate(@_)) &&
+      (ref($code) ne 'CODE'))
+  {
+    if ($code eq '')
+    {
+      undef($code);
+    }
+    else
+    {
+      $code = "sub { $code }";
+
+      my $stash = $_[2];
+      if ((ref($stash) eq 'HASH') &&
+          (ref($stash->{'enclose'}) eq 'HASH'))
+      {
+        my $enclose = '';
+        foreach my $name (keys(%{$stash->{'enclose'}}))
+        {
+          $enclose .= "my \$$name = \$stash->{'enclose'}->{'$name'};\n"
+        }
+        $code = $enclose . $code;
+      }
+
+      # warn "## GENERATED CODE [$_[0]] BEGIN\n"
+      #    . "$code\n"
+      #    . "## GENERATED CODE [$_[0]] END";
+
+      $code = eval $code or
+        die "TODO::InternalError >>$@<<";
+    }
+  }
+
+  # warn "Assemble $_[0] -> >" . ref($code) . "<";
   return $code;
 }
 
@@ -343,6 +427,16 @@ sub GetMyVariable
 sub QuoteString
 {
   return '"' . quotemeta($_[1]) . '"';
+}
+
+# ==== Stash ==================================================================
+
+sub NewStash
+{
+  my $self = shift;
+  my $stash = GungHo::Utils::make_hashref(@_);
+  # __hook__($hook_runner, $hook_name, $cg, $stash)
+  return $self->_gh_RunHooksWithDefault('new_stash', $stash, $self, $stash);
 }
 
 ###### THE END ################################################################

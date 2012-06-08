@@ -62,7 +62,7 @@ sub _gh_new_process_arguments
 sub new
 {
   my $class = shift;
-  my $stash = {};
+  my $stash = { $S_new_constructor => 'new' };
   my $self;
 
   my $meta_class = $class->get_meta_class();
@@ -100,6 +100,44 @@ sub new
         $H_init_Build, $self, $stash);
     $meta_class->_gh_RunHooks(
         $H_init_Validate, $self, $stash);
+    $meta_class->_gh_RunHooksReversed(
+        $H_init_InitParts, $self, $stash);
+    $meta_class->_gh_RunHooks(
+        $H_init_InitWhole, $self, $stash);
+  }
+
+  return $self;
+}
+
+# ---- _fast_new --------------------------------------------------------------
+
+sub _fast_new
+{
+  my $class = $_[0];
+  my $stash = { $S_new_constructor => '_fast_new', $S_new_image => $_[1] };
+  my $self;
+
+  my $meta_class = $class->get_meta_class();
+
+  # __hook__($hook_runner, $hook_name, $class_name, $stash, @new_args)
+  $meta_class->_gh_RunHooks(
+      $H_new_prepare_environment, $class, $stash, @_);
+  return $stash->{$S_new_return}
+    if exists($stash->{$S_new_return});
+
+  # SKIP new_create_image
+  # SKIP new_process_arguments
+
+  # __hook__($hook_runner, $hook_name, $class_name, $stash, @new_args)
+  $self = $meta_class->_gh_RunHooksAugmented(
+      $H_instantiate,
+      sub { return bless($_[3]->{$S_new_image}, $_[2]) },
+      $class, $stash, @_);
+  if (Scalar::Util::blessed($self))
+  {
+    # __hook__($hook_runner, $hook_name, $self, $stash)
+    # SKIP init_Build
+    # SKIP init_Validate
     $meta_class->_gh_RunHooksReversed(
         $H_init_InitParts, $self, $stash);
     $meta_class->_gh_RunHooks(

@@ -37,11 +37,11 @@ sub _gh_SetupAttributeHooks
       $ModName => sub { $self->_gh_PrepareCodeGenerator(@_) });
 }
 
-# $self->__hook__($hook_runner, $hook_name, $cg)
+# $self->__hook__($hook_runner, $hook_name, $attr, $cg)
 sub _gh_PrepareCodeGenerator
 {
   my $self = $_[0];
-  my $cg = $_[3];
+  my $cg = $_[4];
   $cg->_gh_AddHook('gh_cg_do_step',
       $ModName =>
           # __hook__($hook_runner, $hook_name, $cg, $what, $step, $stash)

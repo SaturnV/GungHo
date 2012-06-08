@@ -16,7 +16,7 @@ use Exporter qw( import );
 
 our @EXPORT_OK =
     qw(
-      $S_new_image $S_new_arguments $S_new_return
+      $S_new_image $S_new_arguments $S_new_return $S_new_constructor
 
       $H_new_prepare_environment $H_new_create_image $H_new_process_arguments
       $H_instantiate
@@ -41,6 +41,7 @@ our %EXPORT_TAGS =
 our $S_new_image = 'image';
 our $S_new_arguments = 'arguments';
 our $S_new_return = 'return';
+our $S_new_constructor = 'constructor';
 
 # Code generator
 

@@ -176,21 +176,46 @@ sub __ProcessNewParam_attributes
 sub Name { return $_[0]->{$HK_name} }
 sub _gh_GetSpec { return $_[0]->{$HK_spec} }
 
-# ==== Hooks ==================================================================
+# ==== CodeGenerator ==========================================================
 
-sub _gh_PrepareCodeGeneratorHook
+sub _gh_HookUpCodeGenerator
 {
-  # my ($self, $hook_runner, $hook_name, $cg) = @_;
-  $_[3]->AddNamedPattern(
+  # my ($self, $cg, $cg_owner) = @_;
+  my $self = $_[0];
+  my $cg = $_[1];
+
+  $cg->AddNamedPattern(
       'read_attribute_e'  => '#{self_e}#->{#{attribute_name_e}#}',
       'write_attribute_e' =>
           '#{self_e}#->{#{attribute_name_e}#} = #{new_value_e}#',
       'write_attribute_s' => "#{write_attribute_e}#;\n",
       'delete_attribute_e' => 'delete(#{read_attribute_e}#)',
       'delete_attribute_s' => "#{delete_attribute_e}#;\n",
-      'exists_attribute_e' => 'exists(#{read_attribute_e}#)'
-);
-  return undef;
+      'exists_attribute_e' => 'exists(#{read_attribute_e}#)');
+  $cg->_gh_AddHook('new_stash', $self =>
+      # __hook__($hook_runner, $hook_name, $cg, $stash)
+      sub
+      {
+        $self->__PrepareStash($_[3], $_[2]);
+        return undef;
+      });
+}
+
+sub __PrepareStash
+{
+  my $self = $_[0];
+  my $stash = $_[1];
+
+  my %defaults =
+      (
+        'meta_class' => $self,
+        'class_name' => $self->{$HK_name},
+      );
+  foreach my $k (keys(%defaults))
+  {
+    $stash->{$k} = $defaults{$k}
+      unless exists($stash->{$k});
+  }
 }
 
 # ==== SuperClasses ===========================================================
@@ -371,11 +396,11 @@ sub _gh_AddAttribute
       if $attributes_requested->EXISTS($attr_name);
 
     # $attr_spec_out =
-    #     __hook__($hook_runner, $hook_name, $attr_name, $attr_spec_in)
+    #     __hook__($hook_runner, $hook_name, $class, $attr_name, $attr_spec_in)
     $attr_spec = $self->_gh_RunHooksAugmented(
         'gh_class_add_attribute',
-        sub { return $_[3] },
-        $attr_name, $attrs->FETCH($attr_name));
+        sub { return $_[4] },
+        $self, $attr_name, $attrs->FETCH($attr_name));
     $attributes_requested->Push( $attr_name => $attr_spec )
       if $attr_spec;
   }
@@ -422,9 +447,6 @@ sub _gh_BuildAttributes
       $attr = $attr_class->new($self, $attr_name, $attr_spec,
           delete($super_attrs{$attr_name}));
 
-      # TODO $self->_gh_TweakAttribute();
-      $attr->_gh_AddHook($H_cg_prepare_code_generator,
-          $ModName => sub { $self->_gh_PrepareCodeGeneratorHook(@_) } );
       $attr->_gh_Build($self);
 
       # Push replaces key if it is already present without
@@ -475,6 +497,12 @@ sub _gh_AddMethodImplementation
     if $method_ref;
 }
 
+sub _gh_BuildMethods
+{
+  my $self = $_[0];
+  $self->_gh_RunHooks('gh_build_methods', $self);
+}
+
 # ==== Build ==================================================================
 
 sub Build
@@ -484,6 +512,7 @@ sub Build
 
   $self->_gh_BuildSuperClasses();
   $self->_gh_BuildAttributes();
+  $self->_gh_BuildMethods();
   #$self->_BuildMixins();
 
   $self->{$HK_finalized} = 1;
