@@ -36,7 +36,7 @@ sub _gh_MergeSuperTraits
     foreach my $trait ($super_traits->Keys())
     {
       $trait_args->Push($trait, $super_traits->FETCH($trait))
-        unless $super_traits->EXISTS($trait);
+        unless $trait_args->EXISTS($trait);
     }
   }
 }
