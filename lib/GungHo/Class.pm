@@ -87,6 +87,7 @@ sub build
   my $class = shift;
   $class = $class->new(@_);
   $class->Build();
+  return $class;
 }
 
 # ---- new --------------------------------------------------------------------

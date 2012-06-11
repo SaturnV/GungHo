@@ -93,6 +93,52 @@ sub GetProperty
 }
 *HasFlag = *GetProperty;
 
+# ---- Modify -----------------------------------------------------------------
+
+# NOTE Know what you are doing when using these. Modifying flags late
+#      in the build process may result in inconsistencies.
+
+# $x->_gh_AddProperty('name', 'value')
+sub _gh_AddProperty
+{
+  my $ps = $_[0]->{$HK_properties} //= {};
+  $ps->{$_[1]} = $_[2];
+}
+
+# $x->_gh_AddWeakProperty('name', 'value')
+sub _gh_AddWeakProperty
+{
+  my $ps = $_[0]->{$HK_properties} //= {};
+  $ps->{$_[1]} = $_[2] unless exists($ps->{$_[1]});
+}
+
+# $x->_gh_AddFlag('name')
+# $x->_gh_AddFlag('!name')
+sub _gh_AddFlag
+{
+  my $n = $_[1];
+  my $v = $n !~ s/^!//;
+  $_[0]->_gh_AddProperty($n, $v);
+}
+
+# $x->_gh_AddWeakFlag('name')
+# $x->_gh_AddWeakFlag('!name')
+sub _gh_AddWeakFlag
+{
+  my $n = $_[1];
+  my $v = $n !~ s/^!//;
+  $_[0]->_gh_AddWeakProperty($n, $v);
+}
+
+# $x->_gh_RemoveFlag('name')
+# $x->_gh_RemoveProperty('name')
+sub _gh_RemoveProperty
+{
+  my $ps = $_[0]->{$HK_properties};
+  delete($ps->{$_[1]}) if $ps;
+}
+*_gh_RemoveFlag = *_gh_RemoveProperty;
+
 ###### THE END ################################################################
 
 1

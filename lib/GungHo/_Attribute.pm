@@ -301,7 +301,9 @@ sub new
       },
       $self, $attr_spec, $meta_class);
 
-  # TODO post spec stuff?
+  # Post arguments hook
+  # __hook__($hook_runner, $hook_name, $attr)
+  $self->_gh_RunHooks('gh_attr_post_arguments', $self);
 
   return $self;
 }
