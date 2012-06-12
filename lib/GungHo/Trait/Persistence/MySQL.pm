@@ -499,8 +499,14 @@ sub __PrepareSqlStuff
   # Id
   {
     my $id_flag = $self->{'args'}->{'id_flag'} // 'id';
-    my @id_attrs = $meta_class->GetAttributesWithFlag($id_flag) or
-      die "TODO: No id in $class_name.\n";
+    my @id_attrs = $meta_class->GetAttributesWithFlag($id_flag);
+    if (!@id_attrs)
+    {
+      my $id_attr = $self->{'args'}->{'id_attr'} // 'id';
+      $id_attr = $meta_class->GetAttributeByName($id_attr);
+      push(@id_attrs, $id_attr) if $id_attr;
+    }
+    die "TODO: No id in $class_name.\n" unless @id_attrs;
     die "TODO: Multiple ids in $class_name.\n" if $#id_attrs;
 
     $self->{'sql_id_attr_name'} = $id_attrs[0]->Name();
