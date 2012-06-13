@@ -18,7 +18,7 @@ use Tie::IxHash;
 ###### INIT ###################################################################
 
 our @EXPORT_OK = qw(
-    make_hashref make_arrayref make_ixhash
+    make_hashref make_arrayref make_ixhash clone_ixhash
     get_symbol set_symbol
     _ProcessParameters );
 
@@ -95,6 +95,13 @@ sub make_ixhash
   }
 
   return $ret;
+}
+
+# ---- clone_ixhash -----------------------------------------------------------
+
+sub clone_ixhash
+{
+  return Tie::IxHash->new( map { $_ => $_[0]->FETCH($_) } $_[0]->Keys() );
 }
 
 # ---- (get|set)_symbol -------------------------------------------------------

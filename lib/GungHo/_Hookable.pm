@@ -13,6 +13,7 @@ use feature ':5.10';
 use Tie::IxHash;
 
 use GungHo::_HookRunner;
+use GungHo::Utils qw( clone_ixhash );
 
 ###### DOCS ###################################################################
 
@@ -33,11 +34,6 @@ our $ModName = __PACKAGE__;
 our $HK_hooks = 'hooks';
 
 ###### SUBS ###################################################################
-
-sub __clone_hook_chain
-{
-  return Tie::IxHash->new(map { $_ => $_[0]->FETCH($_) } $_[0]->Keys());
-}
 
 ###### METHODS ################################################################
 
@@ -203,7 +199,7 @@ sub _gh_CloneHooks
 {
   my $chain = $_[0]->{$HK_hooks};
   return $chain ?
-      { map { $_ => __clone_hook_chain($chain->{$_}) } keys(%{$chain}) } :
+      { map { $_ => clone_ixhash($chain->{$_}) } keys(%{$chain}) } :
       undef;
 }
 
@@ -211,7 +207,7 @@ sub _gh_ReplaceHooks
 {
   my $clone = $_[1];
   $_[0]->{$HK_hooks} =
-      { map { $_ => __clone_hook_chain($clone->{$_}) } keys(%{$clone}) };
+      { map { $_ => clone_ixhash($clone->{$_}) } keys(%{$clone}) };
 }
 
 sub _gh_ReplaceHooksDirect { $_[0]->{$HK_hooks} = $_[1] }
@@ -247,8 +243,7 @@ sub __MergeHooks
       }
       else
       {
-        $my_chains->{$chain_name} = Tie::IxHash->new(
-            map { $_ => $other_chain->FETCH($_) } $other_chain->Keys());
+        $my_chains->{$chain_name} = clone_ixhash($other_chain);
       }
     }
   }
