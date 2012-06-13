@@ -1,6 +1,5 @@
 #! /usr/bin/perl
 # TODO: License
-# TODO: Eliminate direct accessess into trait_obj
 ###### NAMESPACE ##############################################################
 
 package GungHo::Trait::Persistence::MySQL;
@@ -23,6 +22,7 @@ our $ModName = __PACKAGE__;
 
 our $HK_args = 'args';
 our $HK_parent = 'parent';
+our $HK_sql_vars = 'sql_vars';
 
 # ==== Method Types ===========================================================
 
@@ -151,6 +151,13 @@ __END__
 
 # ==== CodePatterns ===========================================================
 
+# Get trait object from stash
+sub _get_trait_obj($)
+{
+  return $_[0]->{$ModName} ||
+    die "TODO: Can't find myself";
+}
+
 # my ($hook_runner, $hook_name, $cg, $what, $step, $stash) = @_;
 #     $_[0],        $_[1],    $_[2], $_[3], $_[4], $_[5]
 
@@ -252,14 +259,13 @@ our %CodePatterns =
           sub
           {
             my $cg = $_[2];
-            my $trait_obj = $_[5]->{$ModName} or
-              die "TODO: Can't find myself";
+            my $trait_obj = _get_trait_obj($_[5]);
 
             my $sql_replace_e;
             {
               local $" = ', ';
-              my $sql_table = $trait_obj->{'sql_table'};
-              my @sql_cols = @{$trait_obj->{'sql_cols'}};
+              my $sql_table = $trait_obj->GetSqlVar('table');
+              my @sql_cols = @{$trait_obj->GetSqlVar('columns')};
               my @qms = ('?') x scalar(@sql_cols);
               $sql_replace_e =
                   "REPLACE INTO $sql_table (@sql_cols) VALUES (@qms)";
@@ -281,11 +287,10 @@ our %CodePatterns =
             # TODO proper id attr lookup?
             my $cg = $_[2];
             my $stash = $_[5];
-            my $trait_obj = $stash->{$ModName} or
-              die "TODO: Can't find myself";
+            my $trait_obj = _get_trait_obj($stash);
 
             my $id_attr = $stash->{'meta_class'}->GetAttributeByName(
-                $trait_obj->{'sql_id_attr_name'});
+                $trait_obj->GetSqlVar('id_attribute_name'));
 
             $cg->Push();
             $id_attr->_gh_SetupCodeGenerator($cg);
@@ -358,11 +363,10 @@ our %CodePatterns =
             # TODO proper id attr lookup?
             my $cg = $_[2];
             my $stash = $_[5];
-            my $trait_obj = $stash->{$ModName} or
-              die "TODO: Can't find myself";
+            my $trait_obj = _get_trait_obj($stash);
 
             my $id_attr = $stash->{'meta_class'}->GetAttributeByName(
-                $trait_obj->{'sql_id_attr_name'});
+                $trait_obj->GetSqlVar('id_attribute_name'));
 
             $cg->Push();
             $id_attr->_gh_SetupCodeGenerator($cg);
@@ -381,11 +385,10 @@ our %CodePatterns =
             # TODO proper serialization through type
             my $cg = $_[2];
             my $stash = $_[5];
-            my $trait_obj = $stash->{$ModName} or
-              die "TODO: Can't find myself";
+            my $trait_obj = _get_trait_obj($stash);
 
             my @attrs;
-            foreach my $attr (@{$trait_obj->{'sql_attrs'}})
+            foreach my $attr (@{$trait_obj->GetSqlVar('p_attributes')})
             {
               $cg->Push();
               $attr->_gh_SetupCodeGenerator($cg);
@@ -401,14 +404,13 @@ our %CodePatterns =
           {
             # TODO proper deserialization through type
             my $cg = $_[2];
-            my $trait_obj = $_[5]->{$ModName} or
-              die "TODO: Can't find myself";
+            my $trait_obj = _get_trait_obj($_[5]);
 
             my $idx = 0;
             return join(', ',
                 map { "$_ => \$_->[" . $idx++ . ']' }
                     map { $cg->QuoteString($_) }
-                        @{$trait_obj->{'sql_attr_names'}});
+                        @{$trait_obj->GetSqlVar('p_attribute_names')});
           }
     );
 
@@ -482,12 +484,14 @@ sub __PrepareSqlStuff
   my $meta_class = $self->_gh_MetaClass();
   my $class_name = $meta_class->Name();
 
+  my $sql_vars = $self->{$HK_sql_vars} = {};
+
   # Table
   {
     my $table = $self->{$HK_args}->{'table'} //
         $meta_class->GetProperty('table') //
         lc("${class_name}s"); # TODO
-    $self->{'sql_table'} = $table;
+    $sql_vars->{'table'} = $table;
   }
 
   # Columns
@@ -499,11 +503,11 @@ sub __PrepareSqlStuff
     my @attr_names = map { $_->Name() } @attrs;
     my @sql_cols = @attr_names; # TODO
 
-    $self->{'sql_attrs'} = \@attrs;
-    $self->{'sql_attr_names'} = \@attr_names;
-    $self->{'sql_cols'} = \@sql_cols;
+    $sql_vars->{'columns'} = \@sql_cols;
+    $sql_vars->{'p_attributes'} = \@attrs;
+    $sql_vars->{'p_attribute_names'} = \@attr_names;
 
-    $self->{'sql_attr_col_map'} =
+    $sql_vars->{'p_attribute_name_to_column_map'} =
         { map { $attr_names[$_] => $sql_cols[$_] } (0 .. $#attr_names) };
   }
 
@@ -520,20 +524,25 @@ sub __PrepareSqlStuff
     die "TODO: No id in $class_name.\n" unless @id_attrs;
     die "TODO: Multiple ids in $class_name.\n" if $#id_attrs;
 
-    $self->{'sql_id_attr_name'} = $id_attrs[0]->Name();
-    $self->{'sql_id_col'} =
-        $self->{'sql_attr_col_map'}->{$self->{'sql_id_attr_name'}} //
+    $sql_vars->{'id_attribute_name'} = $id_attrs[0]->Name();
+    $sql_vars->{'id_column'} =
+        $sql_vars->{'p_attribute_name_to_column_map'}->
+            {$sql_vars->{'id_attribute_name'}} //
         die "TODO: Id not persistent in $class_name.\n";
   }
 
   # Select header
   {
     local $" = ', ';
-    my @sql_cols = @{$self->{'sql_cols'}};
-    my $table = $self->{'sql_table'};
-    $self->{'sql_select_header'} = "SELECT @sql_cols FROM $table";
+    my @sql_cols = @{$sql_vars->{'columns'}};
+    my $table = $sql_vars->{'table'};
+    $sql_vars->{'select_header'} = "SELECT @sql_cols FROM $table";
   }
+
+  return $sql_vars;
 }
+
+sub GetSqlVar { return $_[0]->{$HK_sql_vars}->{$_[1]} }
 
 # ==== Code Generator =========================================================
 
@@ -545,12 +554,13 @@ sub _gh_SetupCodeGenerator
 
   $cg->Use($self->{$HK_parent});
 
+  my $sql_vars = $self->{$HK_sql_vars};
   $cg->AddNamedPattern(\%CodePatterns);
   $cg->AddNamedPattern(
       # '' => quotemeta($self->{''}),
-      'sql_table_str' => quotemeta($self->{'sql_table'}),
-      'sql_id_col_str' => quotemeta($self->{'sql_id_col'}),
-      'sql_select_header_str' => quotemeta($self->{'sql_select_header'}));
+      'sql_table_str' => quotemeta($sql_vars->{'table'}),
+      'sql_id_col_str' => quotemeta($sql_vars->{'id_column'}),
+      'sql_select_header_str' => quotemeta($sql_vars->{'select_header'}));
 
   return $self->SUPER::_gh_SetupCodeGenerator(@_);
 }
