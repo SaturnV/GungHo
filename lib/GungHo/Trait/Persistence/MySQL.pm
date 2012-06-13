@@ -1,8 +1,6 @@
 #! /usr/bin/perl
 # TODO: License
 # TODO: Eliminate direct accessess into trait_obj
-# $obj = Class->load($id) ==> load $id or die
-# @objs = Class->load($id1, ...) ==> map { load $id } ($id1, ...)
 ###### NAMESPACE ##############################################################
 
 package GungHo::Trait::Persistence::MySQL;
@@ -13,7 +11,7 @@ use strict;
 use warnings;
 use feature ':5.10';
 
-use parent qw( GungHo::Trait::_Base );
+use parent qw( GungHo::Trait::_Base GungHo::_Builder );
 
 use Scalar::Util;
 
@@ -21,13 +19,32 @@ use Scalar::Util;
 
 our $ModName = __PACKAGE__;
 
-# ==== Code Templates ========================================================
+# ==== Hash Keys ==============================================================
+
+our $HK_args = 'args';
+our $HK_parent = 'parent';
+
+# ==== Method Types ===========================================================
+
+our @MethodTypes = qw( load_by_id save destroy_by_id destroy_object );
+
+our %MethodNames =
+    (
+      # 'method_type' => [qw( reported_name generated_name )]
+      # 'method_type' => 'name'
+      'load_by_id' => 'load',
+      'save' => 'Save',
+      'destroy_by_id' => 'destroy',
+      'destroy_object' => 'Destroy'
+    );
+
+# ==== Code Templates =========================================================
 
 my $ctpl_return_s = <<__END__;
   return #{return_e}#;
 __END__
 
-# ---- load ------------------------------------------------------------------
+# ---- load -------------------------------------------------------------------
 
 my $ctpl_load_by_id_args = <<__END__;
   my \$#{class_sv}# = shift;
@@ -68,7 +85,7 @@ __END__
 
 my $ctpl_load_instantiate = <<__END__;
   my \@#{return_av}# =
-      map { #{class_e}#->_fast_new( { #{deserialize_z}# } ) }
+      map { #{class_e}#->_fast_new( { #{_deserialize_z}# } ) }
           \@{#{rows_e}#};
 __END__
 
@@ -92,7 +109,7 @@ my $ctpl_replace_execute = <<__END__;
         #{sql_replace_e}#) or
       die "TODO: Prepare (\$#{class_sv}#/replace) failed"
       unless \$sth;
-    \$#{return_sv}# = \$sth->execute(#{serialiaze_z}#) or
+    \$#{return_sv}# = \$sth->execute(#{_serialiaze_z}#) or
       die "TODO: Execute (\$#{class_sv}#/replace) failed";
   }
 __END__
@@ -132,18 +149,20 @@ my $ctpl_destroy_by_id_execute = <<__END__;
   }
 __END__
 
-# ==== DefaultCodePatterns ====================================================
+# ==== CodePatterns ===========================================================
 
 # my ($hook_runner, $hook_name, $cg, $what, $step, $stash) = @_;
 #     $_[0],        $_[1],    $_[2], $_[3], $_[4], $_[5]
 
-our %DefaultCodePatterns =
+our %CodePatterns =
     (
       'dbh_e' => '$main::DBH',
 
       # ---- load_by_id -------------------------------------------------------
+      # $obj = Class->load($id) ==> load $id or die
+      # @objs = Class->load($id1, ...) ==> map { load $id } ($id1, ...)
 
-      'load_by_id_s' => [qw(
+      'persistence_load_by_id_s' => [qw(
           load_by_id_args_s
           load_by_id_execute_s
           load_fetch_s
@@ -202,22 +221,9 @@ our %DefaultCodePatterns =
 
       'load_return_s' => $ctpl_load_return,
 
-      'deserialize_z' =>
-          sub
-          {
-            # TODO proper deserialization through type
-            my $cg = $_[2];
-            my $trait_obj = $_[5]->{$ModName} or
-              die "TODO: Can't find myself";
-
-            my $idx = 0;
-            return join(', ',
-                map { "$_ => \$_->[" . $idx++ . ']' }
-                    map { $cg->QuoteString($_) }
-                        @{$trait_obj->{'sql_attr_names'}});
-          },
-
       # ---- replace ----------------------------------------------------------
+
+      'persistence_save_s' => [ 'replace_s' ],
 
       'replace_s' => [qw(
           replace_args_s
@@ -282,7 +288,7 @@ our %DefaultCodePatterns =
                 $trait_obj->{'sql_id_attr_name'});
 
             $cg->Push();
-            $id_attr->_gh_HookUpCodeGenerator($cg, $trait_obj);
+            $id_attr->_gh_SetupCodeGenerator($cg);
             my $code = $cg->ExpandPattern(
                 "#{set_e}# unless #{exists_e}#;\n",
                 {
@@ -296,30 +302,9 @@ our %DefaultCodePatterns =
 
       'replace_return_s' => $ctpl_return_s,
 
-      'serialiaze_z' =>
-          sub
-          {
-            # TODO proper deserialization through type
-            my $cg = $_[2];
-            my $stash = $_[5];
-            my $trait_obj = $stash->{$ModName} or
-              die "TODO: Can't find myself";
-
-            my @attrs;
-            foreach my $attr (@{$trait_obj->{'sql_attrs'}})
-            {
-              $cg->Push();
-              $attr->_gh_HookUpCodeGenerator($cg, $trait_obj);
-              push(@attrs, $cg->Generate('serialize', ['get_e'], $stash));
-              $cg->Pop();
-            }
-
-            return join(', ', @attrs);
-          },
-
       # ---- destroy_by_id ----------------------------------------------------
 
-      'destroy_by_id_s' => [qw(
+      'persistence_destroy_by_id_s' => [qw(
           destroy_by_id_args_s
           destroy_by_id_execute_s
           destroy_return_s
@@ -354,7 +339,7 @@ our %DefaultCodePatterns =
 
       # ---- destroy_object ---------------------------------------------------
 
-      'destroy_object_s' => [qw(
+      'persistence_destroy_object_s' => [qw(
           destroy_object_args_s
           destroy_object_execute_s
           important_x )],
@@ -380,12 +365,50 @@ our %DefaultCodePatterns =
                 $trait_obj->{'sql_id_attr_name'});
 
             $cg->Push();
-            $id_attr->_gh_HookUpCodeGenerator($cg, $trait_obj);
+            $id_attr->_gh_SetupCodeGenerator($cg);
             my $code = $cg->ExpandPattern(
                 "#{self_e}#->destroy(#{get_e}#) if #{exists_e}#;\n");
             $cg->Pop();
 
             return $code;
+          },
+
+      # ---- (De)Serialize ----------------------------------------------------
+
+      '_serialiaze_z' =>
+          sub
+          {
+            # TODO proper serialization through type
+            my $cg = $_[2];
+            my $stash = $_[5];
+            my $trait_obj = $stash->{$ModName} or
+              die "TODO: Can't find myself";
+
+            my @attrs;
+            foreach my $attr (@{$trait_obj->{'sql_attrs'}})
+            {
+              $cg->Push();
+              $attr->_gh_SetupCodeGenerator($cg);
+              push(@attrs, $cg->Generate('serialize', ['get_e'], $stash));
+              $cg->Pop();
+            }
+
+            return join(', ', @attrs);
+          },
+
+      '_deserialize_z' =>
+          sub
+          {
+            # TODO proper deserialization through type
+            my $cg = $_[2];
+            my $trait_obj = $_[5]->{$ModName} or
+              die "TODO: Can't find myself";
+
+            my $idx = 0;
+            return join(', ',
+                map { "$_ => \$_->[" . $idx++ . ']' }
+                    map { $cg->QuoteString($_) }
+                        @{$trait_obj->{'sql_attr_names'}});
           }
     );
 
@@ -399,10 +422,10 @@ sub new
 
   my $self = bless(
       {
-        'args' => $args,
-        'parent' => $host,
+        $HK_args => $args,
+        $HK_parent => $host,
       }, $class);
-  Scalar::Util::weaken($self->{'parent'});
+  Scalar::Util::weaken($self->{$HK_parent});
   
   return $self;
 }
@@ -424,42 +447,30 @@ sub _gh_DoSetupClassTrait
       # __hook__($hook_runner, $hook_name, $class)
       sub
       {
-        shift; shift;
-        $self->__BuildMethods(@_);
+        $self->__PrepareSqlStuff();
+        $self->_gh_Build();
         return undef;
       });
 }
 
-# ==== _BuildMethods ==========================================================
+# ==== _gh_BuildMethods =======================================================
 
-sub __BuildMethods
+sub _gh_MetaClass { return $_[0]->{$HK_parent} }
+sub _gh_GetMethodTypes { return @MethodTypes }
+sub _gh_TypeToWhat { return "persistence_$_[1]_s" }
+
+sub _gh_GetMethodNames
 {
   my $self = $_[0];
-  my $meta_class = $_[1];
-  my $code;
+  my $method_type = $_[1];
+  my $arg_method_table = $self->{$HK_args}->{'methods'};
 
-  $self->__PrepareSqlStuff($meta_class);
+  my $name =
+      ($arg_method_table && exists($arg_method_table->{$method_type})) ?
+          $arg_method_table->{$method_type} :
+          $MethodNames{$method_type};
 
-  my $cg = GungHo::CodeGenerator->new_prepared($self);
-  $cg->AddNamedPattern(\%DefaultCodePatterns);
-
-  $code = $cg->Assemble('load_by_id', [ 'load_by_id_s' ], $cg->NewStash());
-  $meta_class->_gh_AddMethodImplementation('load', $code)
-    if $code;
-
-  $code = $cg->Assemble('save', [ 'replace_s' ], $cg->NewStash());
-  $meta_class->_gh_AddMethodImplementation('Save', $code)
-    if $code;
-
-  $code = $cg->Assemble(
-      'destroy_by_id', [ 'destroy_by_id_s' ], $cg->NewStash());
-  $meta_class->_gh_AddMethodImplementation('destroy', $code)
-    if $code;
-
-  $code = $cg->Assemble(
-      'destroy_object', [ 'destroy_object_s' ], $cg->NewStash());
-  $meta_class->_gh_AddMethodImplementation('Destroy', $code)
-    if $code;
+  return ref($name) ? @{$name} : ($name, $name);
 }
 
 # ==== __PrepareSqlStuff ======================================================
@@ -467,13 +478,13 @@ sub __BuildMethods
 sub __PrepareSqlStuff
 {
   my $self = $_[0];
-  my $meta_class = $_[1];
 
+  my $meta_class = $self->_gh_MetaClass();
   my $class_name = $meta_class->Name();
 
   # Table
   {
-    my $table = $self->{'args'}->{'table'} //
+    my $table = $self->{$HK_args}->{'table'} //
         $meta_class->GetProperty('table') //
         lc("${class_name}s"); # TODO
     $self->{'sql_table'} = $table;
@@ -482,7 +493,7 @@ sub __PrepareSqlStuff
   # Columns
   {
     my $persistent_flag =
-        $self->{'args'}->{'persistent_flag'} // 'persistent';
+        $self->{$HK_args}->{'persistent_flag'} // 'persistent';
     my @attrs = $meta_class->GetAttributesWithFlag($persistent_flag) or
       die "TODO: No persistent attributes in $class_name.\n";
     my @attr_names = map { $_->Name() } @attrs;
@@ -498,11 +509,11 @@ sub __PrepareSqlStuff
 
   # Id
   {
-    my $id_flag = $self->{'args'}->{'id_flag'} // 'id';
+    my $id_flag = $self->{$HK_args}->{'id_flag'} // 'id';
     my @id_attrs = $meta_class->GetAttributesWithFlag($id_flag);
     if (!@id_attrs)
     {
-      my $id_attr = $self->{'args'}->{'id_attr'} // 'id';
+      my $id_attr = $self->{$HK_args}->{'id_attr'} // 'id';
       $id_attr = $meta_class->GetAttributeByName($id_attr);
       push(@id_attrs, $id_attr) if $id_attr;
     }
@@ -526,31 +537,25 @@ sub __PrepareSqlStuff
 
 # ==== Code Generator =========================================================
 
-sub _gh_HookUpCodeGenerator
+sub _gh_SetupCodeGenerator
 {
-  # my ($self, $cg, $cg_owner) = @_;
-  my $self = $_[0];
-  my $cg = $_[1];
-  my $cg_owner = $_[2];
+  # my ($self, $cg) = @_;
+  my $self = shift;
+  my $cg = $_[0];
 
-  $self->{'parent'}->_gh_HookUpCodeGenerator($cg, $cg_owner)
-    if ($self eq $cg_owner);
+  $cg->Use($self->{$HK_parent});
 
+  $cg->AddNamedPattern(\%CodePatterns);
   $cg->AddNamedPattern(
       # '' => quotemeta($self->{''}),
       'sql_table_str' => quotemeta($self->{'sql_table'}),
       'sql_id_col_str' => quotemeta($self->{'sql_id_col'}),
       'sql_select_header_str' => quotemeta($self->{'sql_select_header'}));
-  $cg->_gh_AddHook('new_stash', $self =>
-      # __hook__($hook_runner, $hook_name, $cg, $stash)
-      sub
-      {
-        $self->__PrepareStash($_[3], $_[2]);
-        return undef;
-      });
+
+  return $self->SUPER::_gh_SetupCodeGenerator(@_);
 }
 
-sub __PrepareStash
+sub _gh_PrepareStash
 {
   my $self = $_[0];
   my $stash = $_[1];

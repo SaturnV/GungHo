@@ -19,16 +19,18 @@ our @EXPORT_OK =
       $S_new_image $S_new_arguments $S_new_return $S_new_constructor
 
       $H_new_prepare_environment $H_new_create_image $H_new_process_arguments
-      $H_instantiate
       $H_hnpa_consume_args $H_hnpa_expand_macros
+      $H_instantiate
       $H_init_Build $H_init_Validate $H_init_InitParts $H_init_InitWhole
+      @H_constructor
+
       $H_cg_prepare_code_generator $H_cg_tweak_params $H_cg_tweak_template
     );
 
 our %EXPORT_TAGS =
     (
       'ALL' => \@EXPORT_OK,
-      'HOOK_NAMES'     => [ grep { /^\$H_/ } @EXPORT_OK ],
+      'HOOK_NAMES'     => [ grep { /^[\$\@]H_/ } @EXPORT_OK ],
       'STASH_KEYS'     => [ grep { /^\$S_/ } @EXPORT_OK ],
       'STASH_KEYS_NEW' => [ grep { /^\$S_new_/ } @EXPORT_OK ],
     );
@@ -66,6 +68,15 @@ our $H_init_Build = 'gh_init_Build';
 our $H_init_Validate = 'gh_init_Validate';
 our $H_init_InitParts = 'gh_init_InitParts';
 our $H_init_InitWhole = 'gh_init_InitWhole';
+
+our @H_constructor =
+    (
+      $H_new_prepare_environment, $H_new_create_image,
+          $H_new_process_arguments,
+      $H_hnpa_consume_args, $H_hnpa_expand_macros,
+      $H_instantiate,
+      $H_init_Build, $H_init_Validate, $H_init_InitParts, $H_init_InitWhole
+    );
 
 # ---- Code Generation --------------------------------------------------------
 

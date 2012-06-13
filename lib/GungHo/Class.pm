@@ -179,9 +179,8 @@ sub _gh_GetSpec { return $_[0]->{$HK_spec} }
 
 # ==== CodeGenerator ==========================================================
 
-sub _gh_HookUpCodeGenerator
+sub _gh_SetupCodeGenerator
 {
-  # my ($self, $cg, $cg_owner) = @_;
   my $self = $_[0];
   my $cg = $_[1];
 
@@ -193,6 +192,9 @@ sub _gh_HookUpCodeGenerator
       'delete_attribute_e' => 'delete(#{read_attribute_e}#)',
       'delete_attribute_s' => "#{delete_attribute_e}#;\n",
       'exists_attribute_e' => 'exists(#{read_attribute_e}#)');
+
+  # No _Builder here
+  # TODO Or should be?
   $cg->_gh_AddHook('new_stash', $self =>
       # __hook__($hook_runner, $hook_name, $cg, $stash)
       sub

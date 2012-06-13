@@ -27,6 +27,7 @@ our $HK_next_my_variable_seq = 'next_my_variable_seq';
 our $HKS_what = 'what';
 our $HKS_step = 'step';
 our $HKS_args = 'args';
+our $HKS_used = 'used';
 our $HKS_hooks = 'hooks';
 our $HKS_patterns = 'patterns';
 
@@ -82,7 +83,7 @@ sub new_prepared
   my $class = shift;
   my $owner = shift;
   my $self = $class->new(@_);
-  $owner->_gh_HookUpCodeGenerator($self, $owner);
+  $self->Use($owner);
   return $self;
 }
 
@@ -137,6 +138,39 @@ sub Push
 sub Pop
 {
   $_[0]->_gh_ReplaceHooks(shift(@{$_[0]->{$HK_state}})->{$HKS_hooks});
+}
+
+# ==== Use ====================================================================
+
+sub IsUsed
+{
+  # my $self = $_[0];
+  # my $obj = $_[1];
+  my $ret;
+
+  foreach my $s (@{$_[0]->{$HK_state}})
+  {
+    if ($s->{$HKS_used} && $s->{$HKS_used}->{$_[1]})
+    {
+      $ret = 1;
+      last;
+    }
+  }
+
+  return $ret;
+}
+
+sub Use
+{
+  my $self = shift;
+
+  foreach my $obj (@_)
+  {
+    next if $self->IsUsed($obj);
+
+    $obj->_gh_SetupCodeGenerator($self);
+    $self->{$HK_state}->[0]->{$HKS_used}->{$obj} = 1; # autoviv FTW
+  }
 }
 
 # ==== Generate ===============================================================
