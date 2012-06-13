@@ -28,13 +28,8 @@ sub _gh_cgss_convert_to_type_s
 {
   my $self = $_[0];
   my $cg = $_[3];
-  my $ret;
-
-  my $var_name = $cg->GetMyVariable();
-  $ret = $cg->ExpandPattern("my $var_name = #{arg_value_e}# + 1;\n");
-  $cg->AddNamedPattern('arg_value_e', $var_name);
-  
-  return $ret;
+  $cg->CreateScalarVar('arg_value');
+  return $cg->ExpandPattern("my \$#{arg_value_sv}# = #{arg_value_e}# + 1;\n");
 }
 
 ###### THE END ################################################################

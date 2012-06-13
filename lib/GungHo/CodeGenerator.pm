@@ -22,7 +22,6 @@ our $ModName = __PACKAGE__;
 our $HK_depth = 'depth';
 our $HK_state = 'state';
 our $HK_important = 'important';
-our $HK_next_my_variable_seq = 'next_my_variable_seq';
 
 our $HKS_what = 'what';
 our $HKS_step = 'step';
@@ -69,7 +68,6 @@ sub new
 
   my $self = GungHo::Utils::make_hashref(@_);
   $self->{$HK_state} = [ { $HKS_patterns => {} } ];
-  $self->{$HK_next_my_variable_seq} = 0;
   $self->{$HK_depth} = 0;
   bless($self, $class);
 
@@ -453,9 +451,28 @@ sub Patch
 sub GetMyVariable
 {
   # my $self = $_[0];
-  # my $sigil = $_[1] || '$';
-  return (defined($_[1]) ? ($_[1] ne '' ? "$_[1]" : '') : "\$") .
-      'v' . $_[0]->{$HK_next_my_variable_seq}++;
+  # my $sigil = $_[1] // '';
+  state $next_my_variable_seq = 0;
+  return (defined($_[1]) ? "$_[1]" : '') . 'v' . $next_my_variable_seq++;
+}
+
+sub CreateScalarVar
+{
+  my $self = shift;
+  my @v = map { $self->GetMyVariable() } @_;
+  $self->AddNamedPattern(
+      map { ("$_[$_]_sv" => $v[$_], "$_[$_]_e" => "\$$v[$_]") } (0 .. $#_));
+  return @v if wantarray;
+  return $v[0];
+}
+
+sub CreateArrayVar
+{
+  my $self = shift;
+  my @v = map { $self->GetMyVariable() } @_;
+  $self->AddNamedPattern( map { ("$_[$_]_av" => $v[$_]) } (0 .. $#_) );
+  return @v if wantarray;
+  return $v[0];
 }
 
 sub QuoteString

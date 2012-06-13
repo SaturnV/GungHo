@@ -26,13 +26,15 @@ our $HK_sql_vars = 'sql_vars';
 
 # ==== Method Types ===========================================================
 
-our @MethodTypes = qw( load_by_id save destroy_by_id destroy_object );
+our @MethodTypes =
+    qw( load_by_id load_all save destroy_by_id destroy_object );
 
 our %MethodNames =
     (
       # 'method_type' => [qw( reported_name generated_name )]
       # 'method_type' => 'name'
       'load_by_id' => 'load',
+      'load_all' => 'load_all',
       'save' => 'Save',
       'destroy_by_id' => 'destroy',
       'destroy_object' => 'Destroy'
@@ -64,16 +66,22 @@ my $ctpl_load_by_id_execute = <<__END__;
   }
   else
   {
-    state \$sth_single;
-    \$sth_single = #{dbh_e}#->prepare(
-          "#{sql_select_header_str}# WHERE #{sql_id_col_str}# = ?") or
-      die "TODO: Prepare (\$#{class_sv}#/load_by_id/single) failed"
-      unless \$sth_single;
+    state \$sth_single = #{dbh_e}#->prepare(
+        "#{sql_select_header_str}# WHERE #{sql_id_col_str}# = ?") or
+      die "TODO: Prepare (\$#{class_sv}#/load_by_id/single) failed";
     \$#{sth_sv}# = \$sth_single;
   }
 
   #{sth_e}#->execute(\@#{ids_av}#) or
     die "TODO: Execute (\$#{class_sv}#/load_by_id) failed";
+__END__
+
+my $ctpl_load_all_execute = <<__END__;
+  state \$#{sth_sv}# = #{dbh_e}#->prepare(
+      "#{sql_select_header_str}#") or
+    die "TODO: Prepare (\$#{class_sv}#/load_all/single) failed";
+  #{sth_e}#->execute() or
+    die "TODO: Execute (\$#{class_sv}#/load_all) failed";
 __END__
 
 my $ctpl_load_fetch = <<__END__;
@@ -104,11 +112,9 @@ __END__
 my $ctpl_replace_execute = <<__END__;
   my \$#{return_sv}#;
   {
-    state \$sth;
-    \$sth = #{dbh_e}#->prepare(
+    state \$sth = #{dbh_e}#->prepare(
         #{sql_replace_e}#) or
-      die "TODO: Prepare (\$#{class_sv}#/replace) failed"
-      unless \$sth;
+      die "TODO: Prepare (\$#{class_sv}#/replace) failed";
     \$#{return_sv}# = \$sth->execute(#{_serialiaze_z}#) or
       die "TODO: Execute (\$#{class_sv}#/replace) failed";
   }
@@ -136,11 +142,9 @@ my $ctpl_destroy_by_id_execute = <<__END__;
     }
     else
     {
-      state \$sth_single;
-      \$sth_single = #{dbh_e}#->prepare(
-            "DELETE FROM #{sql_table_str}# WHERE #{sql_id_col_str}# = ?") or
-        die "TODO: Prepare (\$#{class_sv}#/destroy_by_id/single) failed"
-        unless \$sth_single;
+      state \$sth_single = #{dbh_e}#->prepare(
+          "DELETE FROM #{sql_table_str}# WHERE #{sql_id_col_str}# = ?") or
+        die "TODO: Prepare (\$#{class_sv}#/destroy_by_id/single) failed";
       \$sth = \$sth_single;
     }
 
@@ -182,24 +186,48 @@ our %CodePatterns =
           sub
           {
             my $cg = $_[2];
-            my $class_sv = $cg->GetMyVariable('');
-            $cg->AddNamedPattern(
-                'class_sv' => $class_sv,
-                'class_e' => "\$$class_sv",
-                'ids_av' => '_');
+            $cg->CreateScalarVar('class');
+            $cg->AddNamedPattern( 'ids_av' => '_' );
             return $cg->ExpandPattern($ctpl_load_by_id_args);
-         },
+          },
 
       # output: sth_sv
       'load_by_id_execute_s' =>
           sub
           {
             my $cg = $_[2];
-            my $sth_sv = $cg->GetMyVariable('');
-            $cg->AddNamedPattern(
-                'sth_sv' => $sth_sv,
-                'sth_e' => "\$$sth_sv");
+            $cg->CreateScalarVar('sth');
             return $cg->ExpandPattern($ctpl_load_by_id_execute);
+          },
+
+      # ---- load_all ---------------------------------------------------------
+
+      'persistence_load_all_s' => [qw(
+          load_all_args_s
+          load_all_execute_s
+          load_fetch_s
+          load_instantiate_s
+          load_return_s
+          important_x )],
+
+      # output: class_sv
+      'load_all_args_s' =>
+          sub
+          {
+            my $cg = $_[2];
+            $cg->AddNamedPattern(
+                'class_sv' => '_[0]',
+                'class_e' => "\$_[0]");
+            return '';
+          },
+
+      # output: sth_sv
+      'load_all_execute_s' =>
+          sub
+          {
+            my $cg = $_[2];
+            $cg->CreateScalarVar('sth');
+            return $cg->ExpandPattern($ctpl_load_all_execute);
           },
 
       # ---- generic load -----------------------------------------------------
@@ -209,10 +237,7 @@ our %CodePatterns =
           sub
           {
             my $cg = $_[2];
-            my $rows_sv = $cg->GetMyVariable('');
-            $cg->AddNamedPattern(
-                'rows_sv' => $rows_sv,
-                'rows_e' => "\$$rows_sv");
+            $cg->CreateScalarVar('rows');
             return $cg->ExpandPattern($ctpl_load_fetch);
           },
 
@@ -221,8 +246,7 @@ our %CodePatterns =
           sub
           {
             my $cg = $_[2];
-            $cg->AddNamedPattern(
-                'return_av' => $cg->GetMyVariable(''));
+            $cg->CreateArrayVar('return');
             return $cg->ExpandPattern($ctpl_load_instantiate);
           },
 
@@ -243,15 +267,7 @@ our %CodePatterns =
           sub
           {
             my $cg = $_[2];
-
-            my $self_sv = $cg->GetMyVariable('');
-            my $class_sv = $cg->GetMyVariable('');
-            $cg->AddNamedPattern(
-                'class_sv' => $class_sv,
-                'class_e' => "\$$class_sv",
-                'self_sv' => $self_sv,
-                'self_e' => "\$$self_sv");
-
+            $cg->CreateScalarVar('self', 'class');
             return $cg->ExpandPattern($ctpl_replace_args);
           },
 
@@ -271,10 +287,8 @@ our %CodePatterns =
                   "REPLACE INTO $sql_table (@sql_cols) VALUES (@qms)";
             }
 
-            my $return_sv = $cg->GetMyVariable('');
+            $cg->CreateScalarVar('return');
             $cg->AddNamedPattern(
-                'return_sv' => $return_sv,
-                'return_e' => "\$$return_sv",
                 'sql_replace_e' => $cg->QuoteString($sql_replace_e));
 
             return $cg->ExpandPattern($ctpl_replace_execute);
@@ -320,11 +334,8 @@ our %CodePatterns =
           sub
           {
             my $cg = $_[2];
-            my $class_sv = $cg->GetMyVariable('');
-            $cg->AddNamedPattern(
-                'class_sv' => $class_sv,
-                'class_e' => "\$$class_sv",
-                'ids_av' => '_');
+            $cg->CreateScalarVar('class');
+            $cg->AddNamedPattern( 'ids_av' => '_' );
             return $cg->ExpandPattern($ctpl_destroy_by_id_args);
          },
 
@@ -333,10 +344,7 @@ our %CodePatterns =
           sub
           {
             my $cg = $_[2];
-            my $return_sv = $cg->GetMyVariable('');
-            $cg->AddNamedPattern(
-                'return_sv' => $return_sv,
-                'return_e' => "\$$return_sv");
+            $cg->CreateScalarVar('return');
             return $cg->ExpandPattern($ctpl_destroy_by_id_execute);
           },
 

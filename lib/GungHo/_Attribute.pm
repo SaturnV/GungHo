@@ -200,18 +200,19 @@ our %CodePatterns =
                 $builder = "\$$v";
               }
 
-              $v = $cg->GetMyVariable('');
+              $cg->CreateArrayVar('builder_ret');
               $pattern =
                   "if (!#{exists_e}#)\n" .
                   "{\n" .
-                  "  my \@$v = #{self_e}#->$builder(#{stash_e}#);\n" .
-                  "  if (\@$v)\n" .
+                  "  my \@#{builder_ret_av}# =\n" .
+                  "      #{self_e}#->$builder(#{stash_e}#);\n" .
+                  "  if (\@#{builder_ret_av}#)\n" .
                   "  {\n" .
                   "    #{set_s}#" .
                   "  }\n" .
                   "}\n";
-              $code = $cg->ExpandPattern(
-                  $pattern, { 'new_value_e' => "\$${v}[0]" });
+              $code = $cg->ExpandPattern($pattern,
+                  { 'new_value_e' => "\$#{builder_ret_av}#[0]" });
             }
 
             return $code;

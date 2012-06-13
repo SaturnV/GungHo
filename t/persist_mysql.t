@@ -72,7 +72,7 @@ GungHo::Class->build(
           'attr2' => { 'getter' => 'A2', 'setter' => 'SetA2' }
         ]);
 
-can_ok('MysqlTest', 'load', 'destroy', 'Save', 'Destroy');
+can_ok('MysqlTest', 'load', 'load_all', 'destroy', 'Save', 'Destroy');
 
 # ==== CRUD ===================================================================
 
@@ -161,9 +161,20 @@ my $c_row = obj_to_row($c_obj);
   is_deeply(select_all(), [$c_row, @obj_rows], 'insert objs');
 
   # load multiple
-  my @loaded_objs = sort { $a->A1() cmp $b->A1() } MysqlTest->load(@obj_ids);
-  my @looded_rows = obj_to_row(@loaded_objs);
-  is_deeply(\@looded_rows, \@obj_rows, 'load multiple');
+  {
+    my @loaded_objs =
+        sort { $a->A1() cmp $b->A1() } MysqlTest->load(@obj_ids);
+    my @loaded_rows = obj_to_row(@loaded_objs);
+    is_deeply(\@loaded_rows, \@obj_rows, 'load multiple');
+  }
+
+  # load all
+  {
+    my @loaded_objs = 
+        sort { $a->A1() cmp $b->A1() } MysqlTest->load_all();
+    my @loaded_rows = obj_to_row(@loaded_objs);
+    is_deeply(\@loaded_rows, [$c_row, @obj_rows], 'load all');
+  }
 
   # delete multiple
   MysqlTest->destroy(@obj_ids);
