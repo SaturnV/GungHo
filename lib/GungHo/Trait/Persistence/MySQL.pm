@@ -14,6 +14,8 @@ use parent qw( GungHo::Trait::_Base GungHo::_Builder );
 
 use Scalar::Util;
 
+use GungHo::Names qw( :CG_HOOK_ARGS );
+
 ###### VARS ###################################################################
 
 our $ModName = __PACKAGE__;
@@ -49,6 +51,8 @@ __END__
 # ---- load -------------------------------------------------------------------
 
 my $ctpl_load_by_id_args = <<__END__;
+  #{create_sv_x(class)}#
+  #{define_x(ids_av,_)}#
   my \$#{class_sv}# = shift;
 
   die "TODO: load what?" unless \@#{ids_av}#;
@@ -56,17 +60,18 @@ my $ctpl_load_by_id_args = <<__END__;
 __END__
 
 my $ctpl_load_by_id_execute = <<__END__;
+  #{create_sv_x(sth)}#
   my \$#{sth_sv}#;
   if (\$##{ids_av}#)
   {
     my \$qms = join(', ', ('?') x scalar(\@#{ids_av}#));
-    \$#{sth_sv}# = #{dbh_e}#->prepare(
+    \$#{sth_sv}# = #{persistence.dbh_e}#->prepare(
         "#{sql_select_header_str}# WHERE #{sql_id_col_str}# IN (\$qms)") or
       die "TODO: Prepare (\$#{class_sv}#/load_by_id/multiple) failed";
   }
   else
   {
-    state \$sth_single = #{dbh_e}#->prepare(
+    state \$sth_single = #{persistence.dbh_e}#->prepare(
         "#{sql_select_header_str}# WHERE #{sql_id_col_str}# = ?") or
       die "TODO: Prepare (\$#{class_sv}#/load_by_id/single) failed";
     \$#{sth_sv}# = \$sth_single;
@@ -77,7 +82,8 @@ my $ctpl_load_by_id_execute = <<__END__;
 __END__
 
 my $ctpl_load_all_execute = <<__END__;
-  state \$#{sth_sv}# = #{dbh_e}#->prepare(
+  #{create_sv_x(sth)}#
+  state \$#{sth_sv}# = #{persistence.dbh_e}#->prepare(
       "#{sql_select_header_str}#") or
     die "TODO: Prepare (\$#{class_sv}#/load_all/single) failed";
   #{sth_e}#->execute() or
@@ -85,6 +91,7 @@ my $ctpl_load_all_execute = <<__END__;
 __END__
 
 my $ctpl_load_fetch = <<__END__;
+  #{create_sv_x(rows)}#
   my \$#{rows_sv}# = #{sth_e}#->fetchall_arrayref() or
     die "TODO: Fetch (\$#{class_sv}#/load) failed";
   die "TODO: Database error (\$#{class_sv}#/load)"
@@ -92,19 +99,26 @@ my $ctpl_load_fetch = <<__END__;
 __END__
 
 my $ctpl_load_instantiate = <<__END__;
+  #{create_av_x(return)}#
   my \@#{return_av}# =
-      map { #{class_e}#->_fast_new( { #{_deserialize_z}# } ) }
+      map { #{class_e}#->_fast_new( { #{persistence._deserialize_z}# } ) }
           \@{#{rows_e}#};
+__END__
+
+my $ctpl_load_return_die = <<__END__;
+  return \@#{return_av}# if wantarray;
+  return \$#{return_av}#[0] || die "TODO: Object not found.\n";
 __END__
 
 my $ctpl_load_return = <<__END__;
   return \@#{return_av}# if wantarray;
-  return \$#{return_av}#[0] || die "TODO: Object not found.\n";
+  return \$#{return_av}#[0];
 __END__
 
 # ---- replace ----------------------------------------------------------------
 
 my $ctpl_replace_args = <<__END__;
+  #{create_sv_x(self,class)}#
   my \$#{self_sv}# = \$_[0];
   my \$#{class_sv}# = ref(#{self_e}#) || #{self_e}#;
 __END__
@@ -112,10 +126,10 @@ __END__
 my $ctpl_replace_execute = <<__END__;
   my \$#{return_sv}#;
   {
-    state \$sth = #{dbh_e}#->prepare(
+    state \$sth = #{persistence.dbh_e}#->prepare(
         #{sql_replace_e}#) or
       die "TODO: Prepare (\$#{class_sv}#/replace) failed";
-    \$#{return_sv}# = \$sth->execute(#{_serialiaze_z}#) or
+    \$#{return_sv}# = \$sth->execute(#{persistence._serialize_z}#) or
       die "TODO: Execute (\$#{class_sv}#/replace) failed";
   }
 __END__
@@ -123,10 +137,13 @@ __END__
 # ---- destroy ----------------------------------------------------------------
 
 my $ctpl_destroy_by_id_args = <<__END__;
+  #{create_sv_x(class)}#
+  #{define_x(ids_av,_)}#
   my \$#{class_sv}# = shift;
 __END__
 
 my $ctpl_destroy_by_id_execute = <<__END__;
+  #{create_sv_x(return)}#
   my \$#{return_sv}#;
   if (\@#{ids_av}#)
   {
@@ -135,14 +152,14 @@ my $ctpl_destroy_by_id_execute = <<__END__;
     if (\$##{ids_av}#)
     {
       my \$qms = join(', ', ('?') x scalar(\@#{ids_av}#));
-      \$sth = #{dbh_e}#->prepare(
+      \$sth = #{persistence.dbh_e}#->prepare(
           "DELETE FROM #{sql_table_str}# " . 
           "WHERE #{sql_id_col_str}# IN (\$qms)") or
         die "TODO: Prepare (\$#{class_sv}#/destroy_by_id/multiple) failed";
     }
     else
     {
-      state \$sth_single = #{dbh_e}#->prepare(
+      state \$sth_single = #{persistence.dbh_e}#->prepare(
           "DELETE FROM #{sql_table_str}# WHERE #{sql_id_col_str}# = ?") or
         die "TODO: Prepare (\$#{class_sv}#/destroy_by_id/single) failed";
       \$sth = \$sth_single;
@@ -167,115 +184,75 @@ sub _get_trait_obj($)
 
 our %CodePatterns =
     (
-      'dbh_e' => '$main::DBH',
+      'persistence.dbh_e' => '$main::DBH',
 
       # ---- load_by_id -------------------------------------------------------
       # $obj = Class->load($id) ==> load $id or die
       # @objs = Class->load($id1, ...) ==> map { load $id } ($id1, ...)
 
-      'persistence_load_by_id_s' => [qw(
-          load_by_id_args_s
-          load_by_id_execute_s
-          load_fetch_s
-          load_instantiate_s
-          load_return_s
+      'persistence.load_by_id_s' => [qw(
+          persistence.load_by_id.args_s
+          persistence.load_by_id.execute_s
+          persistence.load.fetch_s
+          persistence.load.instantiate_s
+          persistence.load.return_die_s
           important_x )],
 
       # output: class_sv, ids_av
-      'load_by_id_args_s' =>
-          sub
-          {
-            my $cg = $_[2];
-            $cg->CreateScalarVar('class');
-            $cg->AddNamedPattern( 'ids_av' => '_' );
-            return $cg->ExpandPattern($ctpl_load_by_id_args);
-          },
+      'persistence.load_by_id.args_s' => $ctpl_load_by_id_args,
 
       # output: sth_sv
-      'load_by_id_execute_s' =>
-          sub
-          {
-            my $cg = $_[2];
-            $cg->CreateScalarVar('sth');
-            return $cg->ExpandPattern($ctpl_load_by_id_execute);
-          },
+      'persistence.load_by_id.execute_s' => $ctpl_load_by_id_execute,
 
       # ---- load_all ---------------------------------------------------------
 
-      'persistence_load_all_s' => [qw(
-          load_all_args_s
-          load_all_execute_s
-          load_fetch_s
-          load_instantiate_s
-          load_return_s
+      'persistence.load_all_s' => [qw(
+          persistence.load_all.args_s
+          persistence.load_all.execute_s
+          persistence.load.fetch_s
+          persistence.load.instantiate_s
+          persistence.load.return_s
           important_x )],
 
       # output: class_sv
-      'load_all_args_s' =>
-          sub
-          {
-            my $cg = $_[2];
-            $cg->AddNamedPattern(
-                'class_sv' => '_[0]',
-                'class_e' => "\$_[0]");
-            return '';
-          },
+      'persistence.load_all.args_s' =>
+          '#{define_x(class_sv,"_[0]")}#' .
+          '#{define_x(class_e,"$_[0]")}#',
 
       # output: sth_sv
-      'load_all_execute_s' =>
-          sub
-          {
-            my $cg = $_[2];
-            $cg->CreateScalarVar('sth');
-            return $cg->ExpandPattern($ctpl_load_all_execute);
-          },
+      'persistence.load_all.execute_s' => $ctpl_load_all_execute,
 
       # ---- generic load -----------------------------------------------------
 
       # output: rows_sv
-      'load_fetch_s' =>
-          sub
-          {
-            my $cg = $_[2];
-            $cg->CreateScalarVar('rows');
-            return $cg->ExpandPattern($ctpl_load_fetch);
-          },
+      'persistence.load.fetch_s' => $ctpl_load_fetch,
 
       # output: return_av
-      'load_instantiate_s' =>
-          sub
-          {
-            my $cg = $_[2];
-            $cg->CreateArrayVar('return');
-            return $cg->ExpandPattern($ctpl_load_instantiate);
-          },
+      'persistence.load.instantiate_s' => $ctpl_load_instantiate,
 
-      'load_return_s' => $ctpl_load_return,
+      'persistence.load.return_die_s' => $ctpl_load_return_die,
+      'persistence.load.return_s' => $ctpl_load_return,
 
       # ---- replace ----------------------------------------------------------
 
-      'persistence_save_s' => [ 'replace_s' ],
+      'persistence.save_s' => [ 'persistence.replace_s' ],
 
-      'replace_s' => [qw(
-          replace_args_s
-          replace_execute_s
-          reload_id_s
-          replace_return_s
+      'persistence.replace_s' => [qw(
+          persistence.replace.args_s
+          persistence.replace.execute_s
+          persistence.reload_id_s
+          persistence.replace.return_s
           important_x )],
 
-      'replace_args_s' =>
-          sub
-          {
-            my $cg = $_[2];
-            $cg->CreateScalarVar('self', 'class');
-            return $cg->ExpandPattern($ctpl_replace_args);
-          },
+      'persistence.replace.args_s' => $ctpl_replace_args,
 
-      'replace_execute_s' =>
+      'persistence.replace.execute_s' =>
           sub
           {
-            my $cg = $_[2];
-            my $trait_obj = _get_trait_obj($_[5]);
+            my $cg_args = $_[2];
+            my $cg = $cg_args->{$CGHA_code_generator};
+            my $stash = $cg_args->{$CGHA_generate_args}->[0];
+            my $trait_obj = _get_trait_obj($stash);
 
             my $sql_replace_e;
             {
@@ -294,13 +271,15 @@ our %CodePatterns =
             return $cg->ExpandPattern($ctpl_replace_execute);
           },
 
-      'reload_id_s' =>
+      'persistence.reload_id_s' =>
           sub
           {
             # TODO destroy_by_id method name
             # TODO proper id attr lookup?
-            my $cg = $_[2];
-            my $stash = $_[5];
+            # TODO something more prudent instead of attr.write_e
+            my $cg_args = $_[2];
+            my $cg = $cg_args->{$CGHA_code_generator};
+            my $stash = $cg_args->{$CGHA_generate_args}->[0];
             my $trait_obj = _get_trait_obj($stash);
 
             my $id_attr = $stash->{'meta_class'}->GetAttributeByName(
@@ -309,68 +288,53 @@ our %CodePatterns =
             $cg->Push();
             $id_attr->_gh_SetupCodeGenerator($cg);
             my $code = $cg->ExpandPattern(
-                "#{set_e}# unless #{exists_e}#;\n",
+                "#{attr.write_e}# unless #{attr.exists_e}#;\n",
                 {
                   'new_value_e' =>
-                      '#{dbh_e}#->last_insert_id(undef, undef, undef, undef)'
+                      '#{persistence.dbh_e}#->' .
+                          'last_insert_id(undef, undef, undef, undef)'
                 });
             $cg->Pop();
 
             return $code;
           },
 
-      'replace_return_s' => $ctpl_return_s,
+      'persistence.replace.return_s' => $ctpl_return_s,
 
       # ---- destroy_by_id ----------------------------------------------------
 
-      'persistence_destroy_by_id_s' => [qw(
-          destroy_by_id_args_s
-          destroy_by_id_execute_s
-          destroy_return_s
+      'persistence.destroy_by_id_s' => [qw(
+          persistence.destroy_by_id.args_s
+          persistence.destroy_by_id.execute_s
+          persistence.destroy_by_id.return_s
           important_x )],
 
       # output: class_sv, ids_av
-      'destroy_by_id_args_s' =>
-          sub
-          {
-            my $cg = $_[2];
-            $cg->CreateScalarVar('class');
-            $cg->AddNamedPattern( 'ids_av' => '_' );
-            return $cg->ExpandPattern($ctpl_destroy_by_id_args);
-         },
+      'persistence.destroy_by_id.args_s' => $ctpl_destroy_by_id_args,
 
       # output: sth_sv
-      'destroy_by_id_execute_s' =>
-          sub
-          {
-            my $cg = $_[2];
-            $cg->CreateScalarVar('return');
-            return $cg->ExpandPattern($ctpl_destroy_by_id_execute);
-          },
+      'persistence.destroy_by_id.execute_s' => $ctpl_destroy_by_id_execute,
 
-      'destroy_return_s' => $ctpl_return_s,
+      'persistence.destroy_by_id.return_s' => $ctpl_return_s,
 
       # ---- destroy_object ---------------------------------------------------
 
-      'persistence_destroy_object_s' => [qw(
-          destroy_object_args_s
-          destroy_object_execute_s
+      'persistence.destroy_object_s' => [qw(
+          persistence.destroy_object.args_s
+          persistence.destroy_object.execute_s
           important_x )],
 
-      'destroy_object_args_s' =>
-          sub
-          {
-            $_[2]->AddNamedPattern('self_e', '$_[0]');
-            return undef;
-          },
+      'persistence.destroy_object.args_s' => '#{define_x(self_e,"$_[0]")}#',
 
-      'destroy_object_execute_s' =>
+      'persistence.destroy_object.execute_s' =>
           sub
           {
             # TODO destroy_by_id method name
             # TODO proper id attr lookup?
-            my $cg = $_[2];
-            my $stash = $_[5];
+            # TODO proper serialization of id
+            my $cg_args = $_[2];
+            my $cg = $cg_args->{$CGHA_code_generator};
+            my $stash = $cg_args->{$CGHA_generate_args}->[0];
             my $trait_obj = _get_trait_obj($stash);
 
             my $id_attr = $stash->{'meta_class'}->GetAttributeByName(
@@ -379,7 +343,8 @@ our %CodePatterns =
             $cg->Push();
             $id_attr->_gh_SetupCodeGenerator($cg);
             my $code = $cg->ExpandPattern(
-                "#{self_e}#->destroy(#{get_e}#) if #{exists_e}#;\n");
+                "#{self_e}#->destroy(#{attr.get_e}#) " .
+                    "if #{attr.exists_e}#;\n");
             $cg->Pop();
 
             return $code;
@@ -387,12 +352,13 @@ our %CodePatterns =
 
       # ---- (De)Serialize ----------------------------------------------------
 
-      '_serialiaze_z' =>
+      'persistence._serialize_z' =>
           sub
           {
             # TODO proper serialization through type
-            my $cg = $_[2];
-            my $stash = $_[5];
+            my $cg_args = $_[2];
+            my $cg = $cg_args->{$CGHA_code_generator};
+            my $stash = $cg_args->{$CGHA_generate_args}->[0];
             my $trait_obj = _get_trait_obj($stash);
 
             my @attrs;
@@ -400,19 +366,21 @@ our %CodePatterns =
             {
               $cg->Push();
               $attr->_gh_SetupCodeGenerator($cg);
-              push(@attrs, $cg->Generate('serialize', ['get_e'], $stash));
+              push(@attrs, $cg->Generate('serialize', ['attr.get_e'], $stash));
               $cg->Pop();
             }
 
             return join(', ', @attrs);
           },
 
-      '_deserialize_z' =>
+      'persistence._deserialize_z' =>
           sub
           {
             # TODO proper deserialization through type
-            my $cg = $_[2];
-            my $trait_obj = _get_trait_obj($_[5]);
+            my $cg_args = $_[2];
+            my $cg = $cg_args->{$CGHA_code_generator};
+            my $stash = $cg_args->{$CGHA_generate_args}->[0];
+            my $trait_obj = _get_trait_obj($stash);
 
             my $idx = 0;
             return join(', ',
@@ -466,8 +434,12 @@ sub _gh_DoSetupClassTrait
 # ==== _gh_BuildMethods =======================================================
 
 sub _gh_MetaClass { return $_[0]->{$HK_parent} }
-sub _gh_GetMethodTypes { return @MethodTypes }
-sub _gh_TypeToWhat { return "persistence_$_[1]_s" }
+sub _gh_TypeToWhat { return "persistence.$_[1]_s" }
+
+sub _gh_GetMethodTypes
+{
+  return @MethodTypes
+}
 
 sub _gh_GetMethodNames
 {

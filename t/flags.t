@@ -26,16 +26,16 @@ BEGIN { use_ok('GungHo::Class') };
       'apple' =>
           {
             'type' => 'Number',
-            'getter' => 'GetApple',
-            'setter' => 'SetApple',
+            'get' => 'GetApple',
+            'set' => 'SetApple',
             'flags' => [qw( Fruit Apple )],
             'properties' => { 'A' => 3 }
           },
       'peach' =>
           {
             'type' => 'Number',
-            'getter' => 'GetPeach',
-            'setter' => 'SetPeach',
+            'get' => 'GetPeach',
+            'set' => 'SetPeach',
             'flags' => [qw( Fruit Peach )],
             'properties' => { 'B' => 'retek' }
           },

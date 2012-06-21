@@ -67,9 +67,9 @@ GungHo::Class->build(
         },
     'attributes' =>
         [
-          'id' => { 'getter' => 'Id' },
-          'attr1' => { 'getter' => 'A1' },
-          'attr2' => { 'getter' => 'A2', 'setter' => 'SetA2' }
+          'id' => { 'get' => 'Id' },
+          'attr1' => { 'get' => 'A1' },
+          'attr2' => { 'get' => 'A2', 'set' => 'SetA2' }
         ]);
 
 can_ok('MysqlTest', 'load', 'load_all', 'destroy', 'Save', 'Destroy');

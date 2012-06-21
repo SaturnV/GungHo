@@ -24,8 +24,8 @@ BEGIN { use_ok('GungHo::Class') };
       'attr' =>
           {
             'type' => 'Number',
-            'getter' => 'GetAttr',
-            'setter' => 'SetAttr',
+            'get' => 'GetAttr',
+            'set' => 'SetAttr',
             'default' => -2
           });
   $class->Build();
@@ -67,7 +67,7 @@ BEGIN { use_ok('GungHo::Class') };
          {
            'type' => 'Defined',
            'default' => $default_ref,
-           'getter' => 'GetAttr'
+           'get' => 'GetAttr'
          });
   $class->Build();
 

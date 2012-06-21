@@ -10,8 +10,10 @@ use strict;
 use warnings;
 use feature ':5.10';
 
-use GungHo::Names qw( :HOOK_NAMES );
+use GungHo::Names qw( :HOOK_NAMES :CG_HOOK_ARGS );
 use GungHo::Utils;
+
+use Data::Dumper;
 
 use parent 'GungHo::_Hookable';
 
@@ -22,6 +24,7 @@ our $ModName = __PACKAGE__;
 our $HK_depth = 'depth';
 our $HK_state = 'state';
 our $HK_important = 'important';
+our $HK_unique_map = 'unique_map';
 
 our $HKS_what = 'what';
 our $HKS_step = 'step';
@@ -30,33 +33,144 @@ our $HKS_used = 'used';
 our $HKS_hooks = 'hooks';
 our $HKS_patterns = 'patterns';
 
+our $SubPatternClass = "${ModName}::SubPattern";
+
 our %DefaultPatterns =
     (
+      # __hook__($hook_runner, $hook_name, $hook_args)
+
+      'create_sv_x' =>
+          sub
+          {
+            my $cg = $_[2]->{$CGHA_code_generator};
+
+            if (my $pn = $cg->ExpandNamedPattern('##'))
+            {
+              my @vars = grep { $_ }
+                  map { $cg->ExpandNamedPattern("#$_") } (1 .. $pn);
+              $cg->CreateScalarVar(@vars) if @vars;
+            }
+
+            return undef;
+          },
+      'create_av_x' =>
+          sub
+          {
+            my $cg = $_[2]->{$CGHA_code_generator};
+
+            if (my $pn = $cg->ExpandNamedPattern('##'))
+            {
+              my @vars = grep { $_ }
+                  map { $cg->ExpandNamedPattern("#$_") } (1 .. $pn);
+              $cg->CreateArrayVar(@vars) if @vars;
+            }
+
+            return undef;
+          },
+
+      'define_x' =>
+          sub
+          {
+            my $cg = $_[2]->{$CGHA_code_generator};
+            my ($p1, $p2);
+            $cg->AddNamedPattern($p1, $p2)
+              if (($p1 = $cg->ExpandNamedPattern('#1')) &&
+                  ($p2 = $cg->ExpandNamedPattern('#2')));
+            return undef;
+          },
+
+      'define_cond_x' =>
+          sub
+          {
+            my $cg = $_[2]->{$CGHA_code_generator};
+            my ($p1, $p2);
+            $cg->AddWeakNamedPattern($p1, $p2)
+              if (($p1 = $cg->ExpandNamedPattern('#1')) &&
+                  ($p2 = $cg->ExpandNamedPattern('#2')));
+            return undef;
+          },
+
       # input: return_value_e, return_value_opt_e
-      'return_s' => sub
+      'return_s' =>
+          sub
           {
             my $ret;
-            if (defined($_[2]->GetNamedPattern('return_value_e')))
+            my $cg = $_[2]->{$CGHA_code_generator};
+            if (defined($cg->GetNamedPattern('return_value_e')))
             {
-              $ret = $_[2]->ExpandPattern("return #{return_value_e}#;\n");
-              $_[2]->MakeImportant();
+              $ret = $cg->ExpandPattern("return #{return_value_e}#;\n");
+              $cg->MakeImportant();
             }
-            elsif (defined($_[2]->GetNamedPattern('return_value_opt_e')))
+            elsif (defined($cg->GetNamedPattern('return_value_opt_e')))
             {
-              $ret = $_[2]->ExpandPattern("return #{return_value_opt_e}#;\n");
+              $ret = $cg->ExpandPattern("return #{return_value_opt_e}#;\n");
             }
             return $ret;
           },
       'return_undef_s' => "return undef;\n",
 
-      'important_x' => sub
+      'important_x' =>
+          sub
           {
-            $_[2]->MakeImportant();
+            $_[2]->{$CGHA_code_generator}->MakeImportant();
             return undef;
           }
     );
 
+# -----------------------------------------------------------------------------
+
+my $re_name = qr/#?\w+(?:\.\w+)*/;
+
 ###### SUBS ###################################################################
+
+sub _parse_expr
+{
+  my @expr;
+
+  if (@expr = /\G($re_name)/cg)
+  {
+    if (/\G\(\s*/cg)
+    {
+      do { push(@expr, _parse_expr()) } while (/\G\s*,\s*/cg);
+      die 'TODO::BadPattern1' unless /\G\s*\)/cg;
+    }
+  }
+  elsif (/\G#\{\s*/cg)
+  {
+    push(@expr, [_parse_expr()]);
+    die 'TODO::BadPattern2' unless /\G\s*\}#/cg;
+  }
+  elsif (/\G'([^']*?)'/cg || /\G"([^"]*?)"/cg)
+  {
+    push(@expr, $1);
+  }
+
+  return @expr ? @expr : '';
+}
+
+sub _parse_pattern
+{
+  my @p;
+
+  while (/\G(.*?)#\{\s*/cgs)
+  {
+    push(@p, $1) if length($1);
+    push(@p, [_parse_expr()]);
+    die 'TODO::BadPattern3' unless /\G\s*\}#/cg;
+  }
+
+  my $p = pos($_) // 0;
+  push(@p, substr($_, $p))
+    if ($p < length($_));
+
+  return @p;
+}
+
+sub parse_pattern
+{
+  local $_ = $_[0] // '';
+  return _parse_pattern();
+}
 
 ###### METHODS ################################################################
 
@@ -89,36 +203,12 @@ sub new_prepared
 
 sub Destroy { %{$_[0]} = () }
 
-# ==== Misc ===================================================================
-
-sub MakeImportant { $_[0]->{$HK_important} = 1 }
-
-sub IsIn
-{
-  return grep { defined($_) && ($_ eq $_[1]) }
-             map { $_->{$HKS_what} } @{$_[0]->{$HK_state}};
-}
-
-sub IsInLike
-{
-  return grep { defined($_) && /$_[1]/ }
-             map { $_->{$HKS_what} } @{$_[0]->{$HK_state}};
-}
-
-sub WhatChain
-{
-  return join($_[1] // '>',
-      reverse(
-          grep { defined($_) }
-              map { $_->{$HKS_what} } @{$_[0]->{$HK_state}}));
-}
-
 # ==== Push/Pop ===============================================================
 
-sub Push
+sub _Push
 {
   my $self = shift;
-  my $what = shift || $self->{$HK_state}->[0]->{$HKS_what};
+  my $what = shift;
   my $args = shift || $self->{$HK_state}->[0]->{$HKS_args};
   my $patterns = shift || {};
 
@@ -130,12 +220,43 @@ sub Push
         $HKS_args => $args,
       };
   unshift(@{$self->{$HK_state}}, $state);
+
   return $state;
+}
+
+sub Push
+{
+  my $s = shift->_Push(@_);
+  $s->{$HKS_patterns}->{'#explicite_push'} = 1;
+  return $s;
 }
 
 sub Pop
 {
   $_[0]->_gh_ReplaceHooks(shift(@{$_[0]->{$HK_state}})->{$HKS_hooks});
+}
+
+sub IsIn
+{
+  return grep { $_ && ($_ ~~ $_[1]) }
+             map { $_->{$HKS_what} } @{$_[0]->{$HK_state}};
+}
+
+sub What
+{
+  foreach (@{$_[0]->{$HK_state}})
+  {
+    return $_->{$HKS_what} if $_->{$HKS_what};
+  }
+  return undef;
+}
+
+sub WhatChain
+{
+  return join($_[1] // '>',
+      reverse(
+          grep { $_ }
+              map { $_->{$HKS_what} } @{$_[0]->{$HK_state}}));
 }
 
 # ==== Use ====================================================================
@@ -182,9 +303,11 @@ sub Generate
 
   my $top_level = !($self->{$HK_depth}++);
 
+  $self->Push();
   $self->{$HK_important} = undef if $top_level;
   $code = $self->_Generate($what, $template, undef, @_);
   undef($code) if ($top_level && !$self->{$HK_important});
+  $self->Pop();
 
   --$self->{$HK_depth};
 
@@ -199,32 +322,38 @@ sub _Generate
   my $patterns = shift;
   my $code = '';
 
-  my $state = $self->Push($what, \@_, $patterns);
+  my $state = $self->_Push($what, \@_, $patterns);
 
-  # __hook__($hook_runner, $hook_name, $cg, $what, $template, @args)
-  $self->_gh_RunHooks($H_cg_tweak_params, $self, $what, $template, @_);
-  $self->_gh_RunHooks($H_cg_tweak_template, $self, $what, $template, @_);
+  $template = [ $template ] unless ref($template);
+  die 'TODO:BadTemplate'
+    unless (ref($template) eq 'ARRAY');
 
   my $tmp;
+  my $hook_args;
   my @template = @{$template};
-  my $what_chain = $self->WhatChain();
+  my $what_chain = $self->WhatChain() || 'code';
   foreach my $step (@template)
   {
     $state->{$HKS_step} = $step;
-    $code .= "## $what_chain.$step\n";
+    # $code .= "## $what_chain.$step\n";
 
-    # __hook__($hook_runner, $hook_name, $cg, $what, $step, @args)
+    # __hook__($hook_runner, $hook_name, $hook_args)
+    $hook_args =
+        {
+          $CGHA_code_generator => $self,
+          $CGHA_generate_args => [ @_ ],
+          $CGHA_what_chain => $what_chain,
+          $CGHA_what => $what,
+          $CGHA_step => $step
+        };
     $tmp = $self->_gh_RunHooksAugmented(
-        'gh_cg_do_step',
+         $H_cg_do_step,
          sub
          {
-           shift; shift;
-           return $_[0]->_gh_RunHooksAugmented(
-               "gh_cgs_$_[2]",
-               sub { return $_[2]->ExpandNamedPattern($_[4]) },
-               @_);
+           return $_[2]->{$CGHA_code_generator}->ExpandNamedPattern(
+               $_[2]->{$CGHA_step});
          },
-         $self, $what, $step, @_);
+         $hook_args);
     $code .= $tmp if defined($tmp);
   }
 
@@ -264,9 +393,12 @@ sub Assemble
         $code = $enclose . $code;
       }
 
-      # warn "## GENERATED CODE [$_[0]] BEGIN\n"
-      #    . "$code\n"
-      #    . "## GENERATED CODE [$_[0]] END";
+      if ($ENV{'GUNGHO_DEBUG'})
+      {
+        warn "## GENERATED CODE [$_[0]] BEGIN\n"
+           . "$code\n"
+           . "## GENERATED CODE [$_[0]] END";
+      }
 
       $code = eval $code or
         die "TODO::InternalError >>$@<<";
@@ -289,10 +421,12 @@ sub GetNamedPattern
 
   return $_[2]->{$_[1]} if ($_[2] && exists($_[2]->{$_[1]}));
 
+  my $arg_pattern = $_[1] =~ /^#/;
   foreach (@{$_[0]->{$HK_state}})
   {
     return $_->{$HKS_patterns}->{$_[1]}
       if exists($_->{$HKS_patterns}->{$_[1]});
+    last if ($arg_pattern && exists($_->{$HKS_patterns}->{'##'}));
   }
 
   return undef;
@@ -304,7 +438,7 @@ sub CheckNamedPattern
 {
   my ($self, $pattern_name, $pattern_body) = @_;
   die "TODO::BadPatternName[$pattern_name]"
-    unless (defined($pattern_name) && ($pattern_name =~ /^\w+\z/));
+    unless (defined($pattern_name) && ($pattern_name =~ $re_name));
   die "TODO::BadPattern[$pattern_name]"
       unless defined($pattern_body);
 }
@@ -315,7 +449,16 @@ sub AddNamedPattern
 {
   my $self = shift;
   my $patterns = GungHo::Utils::make_hashref(@_);
+
   my $ps = $self->{$HK_state}->[0]->{$HKS_patterns};
+  foreach my $s (@{$self->{$HK_state}})
+  {
+    if ($s->{$HKS_patterns}->{'#explicite_push'})
+    {
+      $ps = $s->{$HKS_patterns};
+      last;
+    }
+  }
 
   my $pattern_body;
   foreach my $pattern_name (keys(%{$patterns}))
@@ -332,8 +475,30 @@ sub AddWeakNamedPattern
 {
   my $self = shift;
   my $patterns = GungHo::Utils::make_hashref(@_);
-  my $ps = $self->{$HK_state}->[0]->{$HKS_patterns};
 
+  # Pop off implicite pushes
+  my $ps;
+  my @popped;
+  while (@{$self->{$HK_state}})
+  {
+    if ($self->{$HK_state}->[0]->{$HKS_patterns}->{'#explicite_push'})
+    {
+      $ps = $self->{$HK_state}->[0]->{$HKS_patterns};
+      last;
+    }
+    else
+    {
+      push(@popped, shift(@{$self->{$HK_state}}));
+    }
+  }
+  if (!$ps)
+  {
+    push(@{$self->{$HK_state}}, @popped);
+    $ps = $popped[0]->{$HKS_patterns};
+    @popped = ();
+  }
+
+  # Add patterns
   my $pattern_body;
   foreach my $pattern_name (keys(%{$patterns}))
   {
@@ -342,6 +507,53 @@ sub AddWeakNamedPattern
     $ps->{$pattern_name} = $pattern_body
       unless $self->GetNamedPattern($pattern_name);
   }
+
+  # Re-push popped stuff
+  unshift(@{$self->{$HK_state}}, @popped)
+    if @popped;
+}
+
+# ---- ExpandPatternElement ---------------------------------------------------
+
+sub __p
+{
+  my $i = 0;
+  return map { ('#' . ++$i => $_ ) } @_;
+#      map { ref($_) ? bless($_, $SubPatternClass) : $_ } @_;
+}
+
+sub __q
+{
+  my $ctx = shift;
+  my $i = 0;
+  return map { ('#' . ++$i => $_ ) }
+      map { ref($_) ? bless({ 'ctx' => $ctx, 'expr' => $_ }, $SubPatternClass) : $_ } @_;
+}
+
+sub _GetArgContext
+{
+  foreach (@{$_[0]->{$HK_state}})
+  {
+    return $_->{$HKS_patterns} if $_->{$HKS_patterns}->{'##'};
+  }
+  return $_[0]->{$HK_state}->[0]->{$HKS_patterns};
+}
+
+sub ExpandPatternElement
+{
+  my $self = shift;
+  my $p0 = shift;
+
+  $p0 = $self->ExpandPatternElement(@{$p0}) if ref($p0);
+
+  return $self->ExpandNamedPattern($p0,
+      @_ ?
+          {
+            '##' => scalar(@_),
+            '#0' => $p0,
+            __q($self->_GetArgContext(), @_)
+          } :
+          undef);
 }
 
 # ---- Expand(Named)Pattern ---------------------------------------------------
@@ -350,32 +562,58 @@ sub AddWeakNamedPattern
 #     'pattern', { 'param_name' => 'param_value' }, 'pattern_name')
 sub ExpandPattern
 {
-  my $self = $_[0];
-  my $pattern = $_[1] // '';
-  my $params = $_[2];
-  my $pattern_name = $_[3];
+  my ($self, $pattern, $params, $pattern_name) = @_;
+  my $ret;
 
-  if (ref($pattern) eq 'CODE')
+  undef($params) unless ($params && %{$params});
+
+  if (!ref($pattern))
   {
-    my $s = $params ?
-        $self->Push($pattern_name, undef, $params) :
-        $self->{$HK_state}->[0];
-    $pattern = $pattern->(undef, undef,
-        $self, $s->{$HKS_what}, $s->{$HKS_step}, @{$s->{$HKS_args}});
+    $ret = '';
+    $self->_Push($pattern_name, undef, $params)
+      if $params;
+    $ret .= ref($_) ? $self->ExpandPatternElement(@{$_}) : $_
+      foreach (parse_pattern($pattern));
     $self->Pop() if $params;
+  }
+  elsif (ref($pattern) eq $SubPatternClass)
+  {
+    $self->_Push(undef, undef, $pattern->{'ctx'});
+    $ret = $self->ExpandPatternElement(@{$pattern->{'expr'}});
+    $self->Pop();
   }
   elsif (ref($pattern) eq 'ARRAY')
   {
     my $s = $self->{$HK_state}->[0];
-    $pattern = $self->_Generate(
-        $s->{$HKS_step}, $pattern, $params, @{$s->{$HKS_args}});
+    $ret = $self->_Generate(
+        $pattern_name // $s->{$HKS_step},
+        $pattern,
+        $params,
+        @{$s->{$HKS_args}});
   }
-  else
+  elsif (ref($pattern) eq 'CODE')
   {
-    $pattern =~ s/#\{(\w+)\}#/$self->ExpandNamedPattern($1, $params)/eg;
+    my $s = $params ?
+        $self->_Push(undef, undef, $params) :
+        $self->{$HK_state}->[0];
+    my $hook_args =
+        {
+            $CGHA_code_generator => $self,
+            $CGHA_generate_args => $s->{$HKS_args},
+            $CGHA_what_chain => $self->WhatChain(),
+            $CGHA_what => $self->What(),
+            $CGHA_step => $s->{$HKS_step}
+        };
+    $ret = $pattern->(undef, undef, $hook_args);
+    $self->Pop() if $params;
+  }
+  elsif (defined($pattern))
+  {
+    my $ref = ref($pattern);
+    die "TODO::BadPatternRef[$ref]";
   }
 
-  return $pattern;
+  return $ret // '';
 }
 
 # $cg->ExpandNamedPattern('pattern_name', { 'param_name' => 'param_value' })
@@ -383,7 +621,7 @@ sub ExpandNamedPattern
 {
   # my ($self, $pattern_name, $params) = @_;
   return $_[0]->ExpandPattern(
-      $_[0]->GetNamedPattern($_[1], $_[2]), $_[2], $_[1]) // '';
+      $_[0]->GetNamedPattern($_[1], $_[2]), $_[2], $_[1]);
 }
 
 # ---- Patch ------------------------------------------------------------------
@@ -448,6 +686,29 @@ sub Patch
 
 # ==== Misc ===================================================================
 
+sub MakeImportant { $_[0]->{$HK_important} = 1 }
+sub QuoteString { return '"' . quotemeta($_[1]) . '"' }
+
+sub GetUniqueName
+{
+  state $next_unique_seq = 0;
+  my $self = $_[0];
+  my $id = $_[1];
+  my $postfix = $_[2] // '';
+  my $ret;
+
+  $ret = $self->{$HK_unique_map}->{$id}
+    if defined($id);
+  if (!$ret)
+  {
+    $ret = 'u' . $next_unique_seq++ . $postfix;
+    $self->{$HK_unique_map}->{$id} = $ret
+      if defined($id);
+  }
+
+  return $ret;
+}
+
 sub GetMyVariable
 {
   # my $self = $_[0];
@@ -473,11 +734,6 @@ sub CreateArrayVar
   $self->AddNamedPattern( map { ("$_[$_]_av" => $v[$_]) } (0 .. $#_) );
   return @v if wantarray;
   return $v[0];
-}
-
-sub QuoteString
-{
-  return '"' . quotemeta($_[1]) . '"';
 }
 
 # ==== Stash ==================================================================

@@ -25,6 +25,7 @@ our $TypeName = $ModName->TypeName();
 
 ###### METHODS ################################################################
 
+# $type->Validate($arg)
 sub Validate
 {
   my $self = shift;
@@ -33,13 +34,14 @@ sub Validate
     unless Scalar::Util::looks_like_number($_[1]);
 }
 
+# $type->_gh_ValidatorPattern($arg_pattern)
 sub _gh_ValidatorPattern
 {
   my $self = shift;
   my $type_name = quotemeta($self->TypeName());
-  return $self->SUPER::_gh_ValidatorPattern() .
+  return $self->SUPER::_gh_ValidatorPattern(@_) .
          "die 'TODO::TypeError[$type_name]: Not a number'\n" .
-         "  unless Scalar::Util::looks_like_number(#{arg_value_e}#);\n";
+         "  unless Scalar::Util::looks_like_number($_[0]);\n";
 }
 
 ###### THE END ################################################################

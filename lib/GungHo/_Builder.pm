@@ -64,7 +64,7 @@ sub _gh_SetupCodeGenerator
     if $self->can('_gh_PrepareStash');
 
   # __hook__($hook_runner, $hook_name, $cg)
-  $self->_gh_RunHooks($H_cg_prepare_code_generator, $self, $cg)
+  $self->_gh_RunHooks($H_b_prepare_code_generator, $self, $cg)
     if $self->can('_gh_RunHooks');
 }
 

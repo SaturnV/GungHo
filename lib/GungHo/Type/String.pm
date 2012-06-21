@@ -23,6 +23,7 @@ our $TypeName = $ModName->TypeName();
 
 ###### METHODS ################################################################
 
+# $type->Validate($arg)
 sub Validate
 {
   my $self = shift;
@@ -31,13 +32,14 @@ sub Validate
     if ref($_[1]);
 }
 
+# $type->_gh_ValidatorPattern($arg_pattern)
 sub _gh_ValidatorPattern
 {
   my $self = shift;
   my $type_name = quotemeta($self->TypeName());
-  return $self->SUPER::_gh_ValidatorPattern() .
+  return $self->SUPER::_gh_ValidatorPattern(@_) .
          "die 'TODO::TypeError[$type_name]: Reference'\n" .
-         "  if ref(#{arg_value_e}#);\n";
+         "  if ref($_[0]);\n";
 }
 
 ###### THE END ################################################################

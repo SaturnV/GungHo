@@ -185,13 +185,20 @@ sub _gh_SetupCodeGenerator
   my $cg = $_[1];
 
   $cg->AddNamedPattern(
-      'read_attribute_e'  => '#{self_e}#->{#{attribute_name_e}#}',
-      'write_attribute_e' =>
-          '#{self_e}#->{#{attribute_name_e}#} = #{new_value_e}#',
-      'write_attribute_s' => "#{write_attribute_e}#;\n",
-      'delete_attribute_e' => 'delete(#{read_attribute_e}#)',
-      'delete_attribute_s' => "#{delete_attribute_e}#;\n",
-      'exists_attribute_e' => 'exists(#{read_attribute_e}#)');
+      # obj.read_attribute_e(#{obj_e}#, #{attr_name_e}#)
+      'obj.read_attribute_e'   => '#{#1}#->{#{#2}#}',
+
+      # obj.attribute_exists_e(#{obj_e}#, #{attr_name_e}#)
+      'obj.attribute_exists_e' => 'exists(#{#1}#->{#{#2}#})',
+
+      # obj.write_attribute_e(#{obj_e}#, #{attr_name_e}#, #{new_value_e}#)
+      'obj.write_attribute_e'  => '#{#1}#->{#{#2}#} = #{#3}#',
+      'obj.write_attribute_s'  => "#{obj.write_attribute_e}#;\n",
+
+      # obj.delete_attribute_e(#{obj_e}#, #{attr_name_e}#)
+      'obj.delete_attribute_e' => 'delete(#{#1}#->{#{#2}#})',
+      'obj.delete_attribute_s' => "#{delete_attribute_e}#;\n",
+      );
 
   # No _Builder here
   # TODO Or should be?

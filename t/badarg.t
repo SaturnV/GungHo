@@ -22,10 +22,10 @@ my $class_spec =
 my $attr_spec =
     {
       'type' => 'Number',
-      'getter' => 'GetAttr',
-      'rawgetter' => 'RawGetAttr',
-      'setter' => 'SetAttr',
-      'rawsetter' => 'RawSetAttr',
+      'get' => 'GetAttr',
+      'rawget' => 'RawGetAttr',
+      'set' => 'SetAttr',
+      'rawset' => 'RawSetAttr',
       'builder' => sub { return () },
       'default' => 0,
     };
@@ -100,7 +100,7 @@ dies_ok { make_class('XX:TestClass') } 'bad class name';
   dies_ok
       {
         my $class = make_class();
-        $class->AddAttribute( 'attr' => make_attr( 'getter' => '*' ) );
+        $class->AddAttribute( 'attr' => make_attr( 'get' => '*' ) );
         $class->Build();
       } 'bad method name';
 }

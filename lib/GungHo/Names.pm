@@ -24,7 +24,11 @@ our @EXPORT_OK =
       $H_init_Build $H_init_Validate $H_init_InitParts $H_init_InitWhole
       @H_constructor
 
-      $H_cg_prepare_code_generator $H_cg_tweak_params $H_cg_tweak_template
+      $H_cg_do_step
+      $CGHA_code_generator $CGHA_generate_args $CGHA_what_chain $CGHA_what
+      $CGHA_step
+
+      $H_b_prepare_code_generator
     );
 
 our %EXPORT_TAGS =
@@ -33,6 +37,7 @@ our %EXPORT_TAGS =
       'HOOK_NAMES'     => [ grep { /^[\$\@]H_/ } @EXPORT_OK ],
       'STASH_KEYS'     => [ grep { /^\$S_/ } @EXPORT_OK ],
       'STASH_KEYS_NEW' => [ grep { /^\$S_new_/ } @EXPORT_OK ],
+      'CG_HOOK_ARGS'   => [ grep { /^\$CGHA_/ } @EXPORT_OK ],
     );
 
 ###### VARS ###################################################################
@@ -80,9 +85,17 @@ our @H_constructor =
 
 # ---- Code Generation --------------------------------------------------------
 
-our $H_cg_prepare_code_generator = 'gh_prepare_code_generator';
-our $H_cg_tweak_params = 'gh_cg_tweak_params';
-our $H_cg_tweak_template = 'gh_cg_tweak_template';
+our $H_cg_do_step = 'gh_cg_do_step';
+
+our $CGHA_code_generator = 'code_generator';
+our $CGHA_generate_args = 'generate_args';
+our $CGHA_what_chain = 'what_chain';
+our $CGHA_what = 'what';
+our $CGHA_step = 'step';
+
+# ---- _Builder ---------------------------------------------------------------
+
+our $H_b_prepare_code_generator = 'gh_b_prepare_code_generator';
 
 ###### THE END ################################################################
 

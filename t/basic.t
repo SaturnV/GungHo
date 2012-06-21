@@ -16,17 +16,18 @@ BEGIN { use_ok('GungHo::Class') };
 
 ###### CODE ###################################################################
 
-GungHo::Class->build(
+my $meta = GungHo::Class->build(
     'name' => 'Alma',
     'attributes' =>
         {
           'a' =>
               {
                 'type' => 'Number',
-                'getter' => 'GetA',
-                'setter' => 'SetA'
+                'get' => 'GetA',
+                'set' => 'SetA'
               }
         });
+isa_ok($meta, 'GungHo::Class');
 
 ok(Alma->new('a' => 1), 'constructor');
 

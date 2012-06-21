@@ -24,8 +24,8 @@ BEGIN { use_ok('GungHo::Class') };
       'attr' =>
           {
             'type' => 'Number',
-            'getter' => 'GetAttr',
-            'setter' => 'SetAttr',
+            'get' => 'GetAttr',
+            'set' => 'SetAttr',
             'builder' => sub { return -2 }
           });
   $class->Build();
@@ -59,7 +59,7 @@ BEGIN { use_ok('GungHo::Class') };
       'attr' =>
           {
             'type' => 'Number',
-            'getter' => 'GetAttr',
+            'get' => 'GetAttr',
             'builder' => '_AttrBuilder'
           });
   $class->Build();
@@ -77,7 +77,7 @@ BEGIN { use_ok('GungHo::Class') };
       'attr' =>
           {
             'type' => 'Defined',
-            'getter' => 'GetAttr',
+            'get' => 'GetAttr',
             'builder' => sub { return [] }
           });
   $class->Build();
@@ -99,7 +99,7 @@ BEGIN { use_ok('GungHo::Class') };
       'attr' =>
           {
             'type' => 'Defined',
-            'getter' => 'GetAttr',
+            'get' => 'GetAttr',
             'builder' => sub { return () },
             'default' => 'z'
           });

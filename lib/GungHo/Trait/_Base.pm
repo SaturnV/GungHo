@@ -45,7 +45,7 @@ sub _gh_DoSetupAttributeTrait
   my $self = $_[0];
   my $host = $_[1];
 
-  $host->_gh_AddHook($H_cg_prepare_code_generator,
+  $host->_gh_AddHook($H_b_prepare_code_generator,
       $ModName => sub { $self->_gh_Attr_PrepareCodeGenerator(@_) })
     if $self->can('_gh_Attr_PrepareCodeGenerator');
 }

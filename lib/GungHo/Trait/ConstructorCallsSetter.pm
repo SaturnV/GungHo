@@ -12,11 +12,37 @@ use feature ':5.10';
 
 use parent qw( GungHo::Trait::_Base );
 
-use GungHo::Names qw( :HOOK_NAMES );
+use GungHo::Names qw( :HOOK_NAMES :CG_HOOK_ARGS );
 
 ###### VARS ###################################################################
 
 our $ModName = __PACKAGE__;
+
+###### SUBS ###################################################################
+
+# Not a hook, really, but it's called like a hook.
+# __hook__($hook_runner, $hook_name, $cg_args)
+sub __builder_generator
+{
+  my $cg_args = $_[2];
+  my $stash = $cg_args->{$CGHA_generate_args}->[0];
+  my $ret;
+
+  # TODO: Make this more parametric
+  my $setter = $stash->{'attribute'}->GetMethodName('set');
+  if ($setter)
+  {
+    my $cg = $cg_args->{$CGHA_code_generator};
+    $ret = $cg->ExpandPattern(
+        "#{self_e}#->$setter(#{v_e}#) if exists(#{v_e}#);\n",
+        {
+          'v_e' => "#{stash_e}#->{'$ModName'}->{#{attr.name_e}#}"
+        });
+    $cg->MakeImportant();
+  }
+
+  return $ret;
+}
 
 ###### METHODS ################################################################
 
@@ -34,56 +60,19 @@ sub _gh_Attr_PrepareCodeGenerator
   my $self = $_[0];
   my $cg = $_[4];
 
-  $cg->Patch("${ModName}_s",
-      'into' => 'build_s',
-      'before' => 'build_builder_s');
+  # Re-wire hnpacahook to put away args in #{stash_e}#->{$ModName}
+  $cg->AddNamedPattern(
+      'attr.hnpacahook.set_s' =>
+          "#{stash_e}#->{'$ModName'}->{#{attr.name_e}#} = " .
+              "#{del_arg_value_e}#;\n");
 
-  # TODO: Simplify this
-  $cg->_gh_AddHook('gh_cg_do_step',
-      $ModName =>
-          # __hook__($hook_runner, $hook_name, $cg, $what, $step, $stash)
-          sub
-          {
-            my $what = $_[3];
-            my $step = $_[4];
-            my $ret;
+  # Then arrange that the setter will be called with these values
+  my $insert = $cg->GetUniqueName("$self.builder_s", '_s');
+  $cg->AddNamedPattern( $insert => \&__builder_generator );
+  $cg->Patch($insert,
+      'into' => 'attr.inithook.build_s',
+      'before' => '*');
 
-            if (($what eq "attribute_${H_hnpa_consume_args}_s") &&
-                ($step eq 'hnpacahook_s'))
-            {
-              my $cg = $_[2];
-              my $stash = $_[5];
-              my $hook_runner = shift;
-
-              $cg->Push(undef, undef,
-                    {
-                      # Autovivification
-                      'image_e' => "#{stash_e}#->{'$ModName'}"
-                    });
-              $ret = $hook_runner->Continue(@_);
-              $cg->Pop();
-            }
-            elsif (($what eq 'build_s') &&
-                   ($step eq "${ModName}_s"))
-            {
-              my $stash = $_[5];
-
-              # TODO: Make this more parametric
-              my $setter = $stash->{'attribute'}->GetMethodName('setter');
-              if ($setter)
-              {
-                my $attr_name = $stash->{'attribute_name'};
-                $ret = $cg->ExpandPattern(
-                    "#{self_e}#->$setter(#{v_e}#) if exists(#{v_e}#);\n",
-                    {
-                      'v_e' => "#{stash_e}#->{'$ModName'}->{'$attr_name'}"
-                    });
-                $cg->MakeImportant();
-              }
-            }
-
-            return $ret;
-          });
   return undef;
 }
 

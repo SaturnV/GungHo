@@ -21,10 +21,10 @@ $class->AddAttribute(
     'attr' =>
         {
           'type' => 'Number',
-          'getter' => 'GetAttr',
-          'rawgetter' => 'RawGetAttr',
-          'setter' => 'SetAttr',
-          'rawsetter' => 'RawSetAttr',
+          'get' => 'GetAttr',
+          'rawget' => 'RawGetAttr',
+          'set' => 'SetAttr',
+          'rawset' => 'RawSetAttr',
           'default' => 0
         });
 $class->Build();
@@ -32,14 +32,14 @@ $class->Build();
 my $obj = XX::TestClass->new();
 isa_ok($obj, 'XX::TestClass');
 
-dies_ok { $obj->SetAttr('alma') } 'setter';
-lives_ok { $obj->RawSetAttr('alma') } 'rawsetter bad';
-is($obj->GetAttr(), 'alma', 'getter bad');
-is($obj->RawGetAttr(), 'alma', 'rawgetter bad');
+dies_ok { $obj->SetAttr('alma') } 'set';
+lives_ok { $obj->RawSetAttr('alma') } 'rawset bad';
+is($obj->GetAttr(), 'alma', 'get bad');
+is($obj->RawGetAttr(), 'alma', 'rawget bad');
 
-lives_ok { $obj->SetAttr(5) } 'rawsetter good';
-is($obj->GetAttr(), 5, 'getter good');
-is($obj->RawGetAttr(), 5, 'rawgetter good');
+lives_ok { $obj->SetAttr(5) } 'rawset good';
+is($obj->GetAttr(), 5, 'get good');
+is($obj->RawGetAttr(), 5, 'rawget good');
 
 # ==== Done ===================================================================
 

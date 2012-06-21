@@ -37,14 +37,14 @@ $base_class->AddAttribute(
     'alma' =>
         {
           'type' => 'Number',
-          'getter' => 'GetAlma',
+          'get' => 'GetAlma',
           'flags' => [qw( All Base Alma Removed )]
         },
     'barac' =>
         {
           'type' => 'Number',
-          'getter' => 'GetBarac',
-          'setter' => 'SetBarac',
+          'get' => 'GetBarac',
+          'set' => 'SetBarac',
           'flags' => [qw( All Base Barac )]
         });
 $base_class->Build();
@@ -74,7 +74,7 @@ is($base_obj->GetBarac(), 4, 'base barac getter');
   $derived_class->AddAttribute(
       'alma' =>
           {
-            'setter' => 'SetAlma',
+            'set' => 'SetAlma',
             'flags' => [qw( Derived !Removed )]
           },
       'retek' => { 'flags' => [qw( All Derived )] } );

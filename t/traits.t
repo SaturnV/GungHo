@@ -45,8 +45,8 @@ BEGIN { use_ok('GungHo::Class') };
                 {
                   'type' => 'Number',
                   'traits' => 'ConstructorCallsSetter',
-                  'getter' => 'GetA',
-                  'setter' => [ 'SetA', '_SetA' ]
+                  'get' => 'GetA',
+                  'set' => [ 'SetA', '_SetA' ]
                 }
           });
 
@@ -69,8 +69,8 @@ BEGIN { use_ok('GungHo::Class') };
             'a' =>
                 {
                   'type' => 'Number',
-                  'getter' => 'GetA',
-                  'setter' => [ 'SetA', '_SetA' ]
+                  'get' => 'GetA',
+                  'set' => [ 'SetA', '_SetA' ]
                 }
           });
 
@@ -93,8 +93,8 @@ BEGIN { use_ok('GungHo::Class') };
             'a' =>
                 {
                   'type' => 'Number',
-                  'getter' => 'GetA',
-                  'setter' => [ 'SetA', '_SetA' ],
+                  'get' => 'GetA',
+                  'set' => [ 'SetA', '_SetA' ],
                   'flags' => 'NoConstructorCallsSetter'
                 }
           });
