@@ -14,6 +14,7 @@ use parent qw( GungHo::Trait::_Base GungHo::_Builder );
 
 use Scalar::Util;
 
+use GungHo::Trait::Persistence::MySQL::GrepParser qw( parse_grep );
 use GungHo::Names qw( :CG_HOOK_ARGS );
 
 ###### VARS ###################################################################
@@ -25,6 +26,7 @@ our $ModName = __PACKAGE__;
 our $HK_args = 'args';
 our $HK_parent = 'parent';
 our $HK_sql_vars = 'sql_vars';
+our $HK_method_specs = 'method_specs';
 
 # ==== Method Types ===========================================================
 
@@ -59,6 +61,12 @@ my $ctpl_load_by_id_args = <<__END__;
   die "TODO: something is wrong" if (\$##{ids_av}# && !wantarray);
 __END__
 
+my $ctpl_load_custom_args = <<__END__;
+  #{create_sv_x(class)}#
+  #{define_x(args_av,_)}#
+  my \$#{class_sv}# = shift;
+__END__
+
 my $ctpl_load_by_id_execute = <<__END__;
   #{create_sv_x(sth)}#
   my \$#{sth_sv}#;
@@ -66,13 +74,13 @@ my $ctpl_load_by_id_execute = <<__END__;
   {
     my \$qms = join(', ', ('?') x scalar(\@#{ids_av}#));
     \$#{sth_sv}# = #{persistence.dbh_e}#->prepare(
-        "#{sql_select_header_str}# WHERE #{sql_id_col_str}# IN (\$qms)") or
+        "#{sql.select_header_str}# WHERE #{sql.id_col_str}# IN (\$qms)") or
       die "TODO: Prepare (\$#{class_sv}#/load_by_id/multiple) failed";
   }
   else
   {
     state \$sth_single = #{persistence.dbh_e}#->prepare(
-        "#{sql_select_header_str}# WHERE #{sql_id_col_str}# = ?") or
+        "#{sql.select_header_str}# WHERE #{sql.id_col_str}# = ?") or
       die "TODO: Prepare (\$#{class_sv}#/load_by_id/single) failed";
     \$#{sth_sv}# = \$sth_single;
   }
@@ -84,10 +92,22 @@ __END__
 my $ctpl_load_all_execute = <<__END__;
   #{create_sv_x(sth)}#
   state \$#{sth_sv}# = #{persistence.dbh_e}#->prepare(
-      "#{sql_select_header_str}#") or
-    die "TODO: Prepare (\$#{class_sv}#/load_all/single) failed";
+      "#{sql.select_header_str}#") or
+    die "TODO: Prepare (\$#{class_sv}#/load_all) failed";
   #{sth_e}#->execute() or
     die "TODO: Execute (\$#{class_sv}#/load_all) failed";
+__END__
+
+# TODO Proper loader name
+my $ctpl_load_custom_fixsql_execute = <<__END__;
+  #{create_sv_x(sth)}#
+  state \$#{sth_sv}# = #{persistence.dbh_e}#->prepare(
+      "#{sql.select_header_str}#" .
+      "#{mysql.cv(where_str)}#" .
+      "#{mysql.cv(order_str)}#") or
+    die "TODO: Prepare (\$#{class_sv}#/#{mysql.cv(method_name_str)}#) failed";
+  #{sth_e}#->execute(#{mysql.cv(execute_e)}#) or
+    die "TODO: Execute (\$#{class_sv}#/#{mysql.cv(method_name_str)}#) failed";
 __END__
 
 my $ctpl_load_fetch = <<__END__;
@@ -127,7 +147,7 @@ my $ctpl_replace_execute = <<__END__;
   my \$#{return_sv}#;
   {
     state \$sth = #{persistence.dbh_e}#->prepare(
-        #{sql_replace_e}#) or
+        #{sql.replace_e}#) or
       die "TODO: Prepare (\$#{class_sv}#/replace) failed";
     \$#{return_sv}# = \$sth->execute(#{persistence._serialize_z}#) or
       die "TODO: Execute (\$#{class_sv}#/replace) failed";
@@ -153,14 +173,14 @@ my $ctpl_destroy_by_id_execute = <<__END__;
     {
       my \$qms = join(', ', ('?') x scalar(\@#{ids_av}#));
       \$sth = #{persistence.dbh_e}#->prepare(
-          "DELETE FROM #{sql_table_str}# " . 
-          "WHERE #{sql_id_col_str}# IN (\$qms)") or
+          "DELETE FROM #{sql.table_str}# " . 
+          "WHERE #{sql.id_col_str}# IN (\$qms)") or
         die "TODO: Prepare (\$#{class_sv}#/destroy_by_id/multiple) failed";
     }
     else
     {
       state \$sth_single = #{persistence.dbh_e}#->prepare(
-          "DELETE FROM #{sql_table_str}# WHERE #{sql_id_col_str}# = ?") or
+          "DELETE FROM #{sql.table_str}# WHERE #{sql.id_col_str}# = ?") or
         die "TODO: Prepare (\$#{class_sv}#/destroy_by_id/single) failed";
       \$sth = \$sth_single;
     }
@@ -222,6 +242,12 @@ our %CodePatterns =
       # output: sth_sv
       'persistence.load_all.execute_s' => $ctpl_load_all_execute,
 
+      # ---- custom load ------------------------------------------------------
+
+      'persistence.load_custom.args_s' => $ctpl_load_custom_args,
+      'persistence.load_custom_fixsql.execute_s' =>
+          $ctpl_load_custom_fixsql_execute,
+
       # ---- generic load -----------------------------------------------------
 
       # output: rows_sv
@@ -266,7 +292,7 @@ our %CodePatterns =
 
             $cg->CreateScalarVar('return');
             $cg->AddNamedPattern(
-                'sql_replace_e' => $cg->QuoteString($sql_replace_e));
+                'sql.replace_e' => $cg->QuoteString($sql_replace_e));
 
             return $cg->ExpandPattern($ctpl_replace_execute);
           },
@@ -387,7 +413,33 @@ our %CodePatterns =
                 map { "$_ => \$_->[" . $idx++ . ']' }
                     map { $cg->QuoteString($_) }
                         @{$trait_obj->GetSqlVar('p_attribute_names')});
-          }
+          },
+
+      # ---- custom variables ------------------------------------------------
+
+      'mysql.cv' =>
+          sub
+          {
+            my $cg_args = $_[2];
+            my $cg = $cg_args->{$CGHA_code_generator};
+            my $ret;
+
+            if (my $p1 = $cg->ExpandNamedPattern('#1'))
+            {
+              my $stash = $cg_args->{$CGHA_generate_args}->[0];
+              my $trait_obj = _get_trait_obj($stash);
+              my $custom_type = $stash->{'method_type'};
+              die "TODO: Not in a custom method"
+                unless ($custom_type =~ /^custom_method_(\d+)\z/);
+              $ret = $trait_obj->GetCustomVar($custom_type, $p1);
+              $ret = $cg->ExpandPattern($ret) if defined($ret);
+            }
+
+            return $ret;
+          },
+
+      # TODO
+      'persistence.sql_col_str' => '#{#1}#'
     );
 
 ###### METHODS ################################################################
@@ -426,6 +478,7 @@ sub _gh_DoSetupClassTrait
       sub
       {
         $self->__PrepareSqlStuff();
+        $self->__PrepareMethods();
         $self->_gh_Build();
         return undef;
       });
@@ -438,21 +491,22 @@ sub _gh_TypeToWhat { return "persistence.$_[1]_s" }
 
 sub _gh_GetMethodTypes
 {
-  return @MethodTypes
+  my $self = $_[0];
+  my $method_specs = $self->{$HK_method_specs};
+  return $method_specs ? keys(%{$method_specs}) : ();
 }
 
 sub _gh_GetMethodNames
 {
   my $self = $_[0];
   my $method_type = $_[1];
-  my $arg_method_table = $self->{$HK_args}->{'methods'};
 
-  my $name =
-      ($arg_method_table && exists($arg_method_table->{$method_type})) ?
-          $arg_method_table->{$method_type} :
-          $MethodNames{$method_type};
+  my $method_name;
+  my $method_specs = $self->{$HK_method_specs};
+  $method_name = $method_specs->{$method_type}->{'name'}
+    if ($method_specs && $method_specs->{$method_type});
 
-  return ref($name) ? @{$name} : ($name, $name);
+  return ref($method_name) ? @{$method_name} : ($method_name, $method_name);
 }
 
 # ==== __PrepareSqlStuff ======================================================
@@ -522,7 +576,228 @@ sub __PrepareSqlStuff
   return $sql_vars;
 }
 
+# ---- GetSqlVar --------------------------------------------------------------
+
 sub GetSqlVar { return $_[0]->{$HK_sql_vars}->{$_[1]} }
+
+# ==== __PrepareMethods =======================================================
+
+sub __PrepareMethods
+{
+  state $custom_type_seq = 0;
+  my $self = $_[0];
+
+  my $method_specs = $self->{$HK_method_specs} //= {};
+  my $arg_method_table = $self->{$HK_args}->{'methods'};
+
+  # TODO: Check arg_method_table type
+  my %todo;
+  %todo = map { ( $_ => 1 ) } keys(%{$arg_method_table})
+    if $arg_method_table;
+
+  # Built in methods
+  my $method_arg;
+  foreach my $method_type (@MethodTypes)
+  {
+    my $method_name = $MethodNames{$method_type} or
+      next;
+
+    if (exists($arg_method_table->{$method_name}))
+    {
+      $method_arg = $arg_method_table->{$method_name};
+
+      # undef / false => don't build
+      # str / arrayref => rename
+      # anything else => custom (keep in todo)
+      if (!$method_arg || !ref($method_arg) || (ref($method_arg) eq 'ARRAY'))
+      {
+        $method_specs->{$method_type} =
+            {
+              'name' => $method_arg,
+              'type' => $method_type
+            }
+          if $method_arg;
+        delete($todo{$method_name});
+      }
+    }
+    else
+    {
+      # No mention => build default implementation
+      $method_specs->{$method_type} =
+          {
+            'name' => $method_name,
+            'type' => $method_type
+          };
+    }
+  }
+
+  # Custom methods
+  my $method_type;
+  foreach my $method_name (keys(%todo))
+  {
+    $method_type = 'custom_method_' . $custom_type_seq++;
+    $method_arg = $arg_method_table->{$method_name};
+    $method_specs->{$method_type} =
+        $self->__MethodArg2Spec($method_arg, $method_name, $method_type);
+  }
+}
+
+# ---- __MethodArg2Spec -------------------------------------------------------
+
+sub __MethodArg2Spec
+{
+  my ($self, $method_arg, $method_name, $method_type) = @_;
+  my $method_spec =
+      {
+        'orig_name' => $method_name,
+        'name' => [$method_name, $method_name],
+        'type' => $method_type
+      };
+
+  die "TODO: $ModName bad custom method '$method_name'"
+    unless (ref($method_arg) eq 'HASH');
+
+  my $parser_method;
+  foreach my $k (keys(%{$method_arg}))
+  {
+    $parser_method = "_gh_ParseArgMethod_$k";
+    die "TODO $ModName bad keyword '$k' in custom method '$method_name'"
+      unless ($parser_method = $self->can($parser_method));
+    $self->$parser_method($method_name, $method_spec, $method_arg, $k);
+  }
+  $self->__CreateCustomTemplate($method_name, $method_spec);
+
+  return $method_spec;
+}
+
+# ---- __CreateCustomTemplate -------------------------------------------------
+
+sub __CreateCustomTemplate
+{
+  my ($self, $method_name, $method_spec) = @_;
+  my $method_type = $method_spec->{'type'};
+
+  my $model = $method_spec->{'model'} // 'load';
+
+  my %vars =
+      (
+        'model_str' => $model,
+        'reported_name_str' => $method_spec->{'name'}->[0],
+        'generated_name_str' => $method_spec->{'name'}->[1],
+        'method_name_str' => $method_spec->{'orig_name'},
+        'type_str' => $method_type
+      );
+
+  my @template;
+  given ($model)
+  {
+    when ('load')
+    {
+      @template = ('persistence.load_custom.args_s');
+
+      # TODO fix/gen sql
+      push(@template, 'persistence.load_custom_fixsql.execute_s');
+      if ($method_spec->{'where'})
+      {
+        $vars{'where_str'} = ' WHERE ' . $method_spec->{'where'}->{'sql'};
+        $vars{'execute_e'} =
+            join(', ', @{$method_spec->{'where'}->{'execute'}});
+      }
+      $vars{'order_str'} = ' ORDER BY ' .
+          join(', ', @{$method_spec->{'order_by'}})
+        if defined($method_spec->{'order_by'});
+
+      push(@template,
+          'persistence.load.fetch_s',
+          'persistence.load.instantiate_s');
+
+      # TODO single/multi obj, die/nodie
+      push(@template, 'persistence.load.return_s');
+
+      push(@template, 'important_x');
+    }
+    default
+    {
+      die "TODO: Can't generate $model method.\n";
+    }
+  }
+
+  $method_spec->{'template'} = \@template;
+  $method_spec->{'vars'} = \%vars;
+}
+
+# ---- _gh_ParseArgMethod_xxx -------------------------------------------------
+# $self->$parser_method($method_name, $method_spec, $method_args, $kw);
+
+sub _gh_ParseArgMethod_reported_name
+{
+  my ($self, $method_name, $method_spec, $method_args, $kw) = @_;
+  $method_spec->{'name'}->[0] = $method_args->{$kw};
+}
+
+sub _gh_ParseArgMethod_generated_name
+{
+  my ($self, $method_name, $method_spec, $method_args, $kw) = @_;
+  $method_spec->{'name'}->[1] = $method_args->{$kw};
+}
+
+sub _gh_ParseArgMethod_type
+{
+  my ($self, $method_name, $method_spec, $method_args, $kw) = @_;
+  my $model = $method_args->[$kw];
+  die "TODO $ModName can't use ref as $kw for $method_name"
+    if ref($model);
+  die "TODO $ModName bad method type '$model'"
+    unless ($model ~~ [qw( load )]);
+  $method_spec->{'model'} = $model;
+}
+
+sub _gh_ParseArgMethod_grep
+{
+  my ($self, $method_name, $method_spec, $method_args, $kw) = @_;
+
+  my $model = $method_spec->{'model'} // $method_args->{'model'} // 'load';
+  die "TODO $ModName can't use $kw in $model for $method_name"
+    unless ($model eq 'load');
+
+  eval { $method_spec->{'where'} = parse_grep($method_args->{$kw}) };
+  die "TODO $ModName $@ in $kw for $method_name" if $@;
+}
+
+sub _gh_ParseArgMethod_sort
+{
+  my ($self, $method_name, $method_spec, $method_args, $kw) = @_;
+  if (my @fields = grep { $_ } split(/(?:\s*,\s*|\s+)/, $method_args->{$kw}))
+  {
+    # TODO check field names
+    foreach (@fields)
+    {
+      $_ = s/^-// ?
+          "#{persistence.sql_col_str($_)}# DESC" :
+          "#{persistence.sql_col_str($_)}#";
+    }
+    $method_spec->{'order_by'} = \@fields;
+  }
+}
+
+sub _gh_ParseArgMethod_single_object
+{
+  # TODO
+}
+
+# ---- GetCustomVar -----------------------------------------------------------
+
+sub GetCustomVar
+{
+  my ($self, $custom_type, $var) = @_;
+  my $ret;
+
+  $ret = $self->{$HK_method_specs}->{$custom_type}->{'vars'}->{$var}
+    if ($self->{$HK_method_specs} &&
+        $self->{$HK_method_specs}->{$custom_type});
+
+  return $ret;
+}
 
 # ==== Code Generator =========================================================
 
@@ -534,13 +809,31 @@ sub _gh_SetupCodeGenerator
 
   $cg->Use($self->{$HK_parent});
 
-  my $sql_vars = $self->{$HK_sql_vars};
-  $cg->AddNamedPattern(\%CodePatterns);
-  $cg->AddNamedPattern(
-      # '' => quotemeta($self->{''}),
-      'sql_table_str' => quotemeta($sql_vars->{'table'}),
-      'sql_id_col_str' => quotemeta($sql_vars->{'id_column'}),
-      'sql_select_header_str' => quotemeta($sql_vars->{'select_header'}));
+  # SQL vars
+  {
+    my $sql_vars = $self->{$HK_sql_vars};
+    $cg->AddNamedPattern(\%CodePatterns);
+    $cg->AddNamedPattern(
+        # '' => quotemeta($self->{''}),
+        'sql.table_str' => quotemeta($sql_vars->{'table'}),
+        'sql.id_col_str' => quotemeta($sql_vars->{'id_column'}),
+        'sql.select_header_str' => quotemeta($sql_vars->{'select_header'}));
+  }
+
+  # Method templates
+  if (my $method_specs = $self->{$HK_method_specs})
+  {
+    my $template;
+    my $method_spec;
+    foreach my $method_type (keys(%{$method_specs}))
+    {
+      $method_spec = $method_specs->{$method_type};
+      $template = $method_spec->{'template'};
+      $cg->AddNamedPattern(
+          $self->_gh_TypeToWhat($method_type) => $template)
+        if $template;
+    }
+  }
 
   return $self->SUPER::_gh_SetupCodeGenerator(@_);
 }

@@ -253,10 +253,12 @@ sub What
 
 sub WhatChain
 {
-  return join($_[1] // '>',
+  my @what_chain =
       reverse(
           grep { $_ }
-              map { $_->{$HKS_what} } @{$_[0]->{$HK_state}}));
+              map { $_->{$HKS_what} } @{$_[0]->{$HK_state}});
+  return @what_chain if wantarray;
+  return join($_[1] // '>', @what_chain);
 }
 
 # ==== Use ====================================================================
@@ -330,9 +332,8 @@ sub _Generate
 
   my $tmp;
   my $hook_args;
-  my @template = @{$template};
   my $what_chain = $self->WhatChain() || 'code';
-  foreach my $step (@template)
+  foreach my $step (@{$template})
   {
     $state->{$HKS_step} = $step;
     # $code .= "## $what_chain.$step\n";
@@ -600,7 +601,7 @@ sub ExpandPattern
         {
             $CGHA_code_generator => $self,
             $CGHA_generate_args => $s->{$HKS_args},
-            $CGHA_what_chain => $self->WhatChain(),
+            $CGHA_what_chain => scalar($self->WhatChain()),
             $CGHA_what => $self->What(),
             $CGHA_step => $s->{$HKS_step}
         };
