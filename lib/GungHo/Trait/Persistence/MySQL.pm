@@ -16,6 +16,7 @@ use Scalar::Util;
 
 use GungHo::Trait::Persistence::MySQL::GrepParser qw( parse_grep );
 use GungHo::Names qw( :CG_HOOK_ARGS );
+use GungHo::_Serialize qw( _gh_cg_serialize_e _gh_cg_deserialize_e );
 
 ###### VARS ###################################################################
 
@@ -381,7 +382,6 @@ our %CodePatterns =
       'persistence._serialize_z' =>
           sub
           {
-            # TODO proper serialization through type
             my $cg_args = $_[2];
             my $cg = $cg_args->{$CGHA_code_generator};
             my $stash = $cg_args->{$CGHA_generate_args}->[0];
@@ -390,10 +390,7 @@ our %CodePatterns =
             my @attrs;
             foreach my $attr (@{$trait_obj->GetSqlVar('p_attributes')})
             {
-              $cg->Push();
-              $attr->_gh_SetupCodeGenerator($cg);
-              push(@attrs, $cg->Generate('serialize', ['attr.get_e'], $stash));
-              $cg->Pop();
+              push(@attrs, _gh_cg_serialize_e($attr, $cg, $stash));
             }
 
             return join(', ', @attrs);
@@ -402,7 +399,6 @@ our %CodePatterns =
       'persistence._deserialize_z' =>
           sub
           {
-            # TODO proper deserialization through type
             my $cg_args = $_[2];
             my $cg = $cg_args->{$CGHA_code_generator};
             my $stash = $cg_args->{$CGHA_generate_args}->[0];
@@ -410,7 +406,11 @@ our %CodePatterns =
 
             my $idx = 0;
             return join(', ',
-                map { "$_ => \$_->[" . $idx++ . ']' }
+                map {
+                      "$_ => " .
+                          _gh_cg_deserialize_e(
+                              $_, "\$_->[" . $idx++ . ']', $cg, $stash)
+                    }
                     map { $cg->QuoteString($_) }
                         @{$trait_obj->GetSqlVar('p_attribute_names')});
           },
@@ -809,10 +809,11 @@ sub _gh_SetupCodeGenerator
 
   $cg->Use($self->{$HK_parent});
 
+  $cg->AddNamedPattern(\%CodePatterns);
+
   # SQL vars
   {
     my $sql_vars = $self->{$HK_sql_vars};
-    $cg->AddNamedPattern(\%CodePatterns);
     $cg->AddNamedPattern(
         # '' => quotemeta($self->{''}),
         'sql.table_str' => quotemeta($sql_vars->{'table'}),

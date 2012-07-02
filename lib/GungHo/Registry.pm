@@ -70,6 +70,14 @@ sub _get_or_load
 
   return $obj;
 }
+
+sub _get_all
+{
+  # my $obj_type = $_[0];
+  # my $registry = $Registry{$_[0]};
+  return $Registry{$_[0]} ? values(%{$Registry{$_[0]}}) : ();
+}
+
 # ---- Classes ----------------------------------------------------------------
 
 # register_class($meta_class)
@@ -86,6 +94,8 @@ sub get_meta_class
   # my $class = ref($_[0]) || $_[0];
   return _get('metaclass', ref($_[0]) || $_[0]);
 }
+
+sub get_registered_classes { return _get_all('metaclass') }
 
 # ---- Types ------------------------------------------------------------------
 
