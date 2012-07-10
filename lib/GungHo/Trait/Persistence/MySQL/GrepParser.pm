@@ -10,9 +10,6 @@ use strict;
 use warnings;
 use feature ':5.10';
 
-# TODO remove before flight
-use Data::Dumper;
-
 use Exporter qw( import );
 
 ###### INIT ###################################################################
@@ -183,9 +180,7 @@ sub Parse
 sub parse_grep
 {
   my $self = bless({ $HK_parser_table => { %ParserMap } });
-  my $ret = $self->Parse(0, $_[0]);
-  print Data::Dumper::Dumper($ret);
-  return $ret;
+  return $self->Parse(0, $_[0]);
 }
 
 ###### THE END ################################################################
