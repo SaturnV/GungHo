@@ -33,7 +33,7 @@ sub Validate
   my $self = shift;
   $self->SUPER::Validate(@_);
   die "TODO::TypeError[" . $self->TypeName() . "]: Doesn't look good."
-    unless ($_[1] =~ $re_guid);
+    unless ($_[0] =~ $re_guid);
 }
 
 # $type->_gh_ValidatorPattern($arg_pattern)

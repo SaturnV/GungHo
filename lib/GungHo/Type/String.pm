@@ -29,7 +29,7 @@ sub Validate
   my $self = shift;
   $self->SUPER::Validate(@_);
   die "TODO::TypeError[" . $self->TypeName() . "]: Reference"
-    if ref($_[1]);
+    if ref($_[0]);
 }
 
 # $type->_gh_ValidatorPattern($arg_pattern)

@@ -31,7 +31,7 @@ sub Validate
   my $self = shift;
   $self->SUPER::Validate(@_);
   die "TODO::TypeError[" . $self->TypeName() . "]: Not a number"
-    unless Scalar::Util::looks_like_number($_[1]);
+    unless Scalar::Util::looks_like_number($_[0]);
 }
 
 # $type->_gh_ValidatorPattern($arg_pattern)
