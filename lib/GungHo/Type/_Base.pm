@@ -24,7 +24,7 @@ our %Inserts =
             'patch' => [ 'into' => 'attr.validate_s' ],
             'pattern_generator' => '_gh_ValidatorPattern',
             'direct_call' => 'Validate',
-            'args' => [ '#{arg_value_e}#' ],
+            'args' => [ '#{set_value_e}#' ],
             'important' => 1
           },
       'default' =>

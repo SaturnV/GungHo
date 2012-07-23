@@ -332,7 +332,8 @@ our %CodePatterns =
           attr.inithook.validate_s
           return_undef_s )],
 
-      'attr.inithook.validate_s' => '#{attr.validate_s}#',
+      'attr.inithook.validate_s' =>
+          '#{define_x(set_value_e,#{arg_value_e}#)}##{attr.validate_s}#',
 
       # ---- TODO -------------------------------------------------------------
 
