@@ -205,11 +205,14 @@ sub _gh_UntrustedDeserializatorPattern
   $cg->CreateScalarVar('serial');
   $ret_e = '#{serial_e}#';
 
+  my $set_s = ($context && $context->{'dont_validate_attrs'}) ?
+      'attr.set_novalidate_s' :
+      'attr.set_s';
   $cg->AddNamedPattern(
       'arg_value_e' => $serial_e,
       'attr.set.write_s' => "#{serial_e}# = #{new_value_e}#;\n");
   $ret_s = "my \$#{serial_sv}#;\n"
-         . $cg->Generate('deserialize', ['attr.set_s'], $stash);
+         . $cg->Generate('deserialize', [$set_s], $stash);
 
   $cg->Pop();
 

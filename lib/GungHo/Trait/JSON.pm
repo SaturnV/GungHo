@@ -26,6 +26,7 @@ my $json_ctx =
     {
       'name' => $ModName,
       'type' => 'JSON',
+      'dont_validate_attrs' => 1,
       'trusted' => 0
     }
 
