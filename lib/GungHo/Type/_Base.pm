@@ -211,7 +211,7 @@ sub _gh_UntrustedDeserializatorPattern
   {
     $cg->CreateScalarVar('deserialized');
     $ret_e = $cg->ExpandPattern('#{deserialized_e}#');
-    $ret_s = $cg->ExpandPattern("my \$#{serial_sv}#;\n");
+    $ret_s = $cg->ExpandPattern("my \$#{deserialized_sv}#;\n");
   }
 
   my $set_s = ($context && $context->{'dont_validate_attrs'}) ?
