@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 # TODO: License
-# Do nothing type.
+# TODO: Remove me
 ###### NAMESPACE ##############################################################
 
 package GungHo::Type::Boolean;
@@ -41,16 +41,11 @@ sub _gh_ValidatorPattern
 
 # =============================================================================
 
-sub ConvertToType
-{
-  # my $self = shift;
-  return !!$_[1];
-}
+sub ConvertToType { return !!$_[1] }
+sub _gh_ConvertToTypePattern { return "!!$_[1]" }
 
-sub _gh_ConvertToTypePattern
-{
-  return "!!$_[1]";
-}
+sub TransformValueOut { return !!$_[1] }
+sub _gh_TransformValueOutPattern { return "!!$_[1]" }
 
 # TODO Replace this with the right stuff
 sub _gh_PrepareCodeGenerator
@@ -59,8 +54,11 @@ sub _gh_PrepareCodeGenerator
   $self->SUPER::_gh_PrepareCodeGenerator(@_);
 
   my $cg = $_[3];
-  $cg->AddNamedPattern('attr.convert_to_type_s' =>
-      '#{define_cond_x(set_value_e,"!!#{arg_value_e}#")}#');
+  $cg->AddNamedPattern(
+      'attr.convert_to_type_s' =>
+          '#{define_cond_x(set_value_e,"!!#{arg_value_e}#")}#',
+      'attr.transform_value_out_s' =>
+          '#{define_x(return_value_e,"!!#{attr_value_e}#")}#');
 
   return undef;
 }
