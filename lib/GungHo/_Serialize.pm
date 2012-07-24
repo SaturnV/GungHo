@@ -29,7 +29,7 @@ sub _gh_cg_serialize_es
 
 sub _gh_cg_deserialize_es
 {
-  # my ($attr, $serial_e, $cg, $stash, $context) = @_;
+  # my ($attr, $serial_e, $dest_e, $cg, $stash, $context) = @_;
   my $attr = shift;
   my $type = $attr->Type() or
     die "TODO: Can't get type object for '" . $attr->Name() . "'";

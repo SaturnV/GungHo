@@ -426,7 +426,8 @@ our %CodePatterns =
             {
               $attr_name_e = $cg->QuoteString($attr->Name());
               ($e, $s) = _gh_cg_deserialize_es(
-                  $attr, "\$_->[" . $idx++ . ']', $cg, $stash, $mysql_ctx);
+                  $attr, "\$_->[" . $idx++ . ']', undef,
+                  $cg, $stash, $mysql_ctx);
               push(@es, "$attr_name_e => $e");
               push(@ss, $s);
             }

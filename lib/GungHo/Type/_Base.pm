@@ -181,38 +181,46 @@ sub _gh_SerializatorPattern
 
 sub _gh_DeserializatorPattern
 {
-  my ($self, $attr, $serial_e, $cg, $stash, $context) = @_;
+  my ($self, $attr, $serial_e, $dest_e, $cg, $stash, $context) = @_;
   my $method = ($context && $context->{'trusted'}) ?
       '_gh_TrustedDeserializatorPattern' :
       '_gh_UntrustedDeserializatorPattern';
-  return $self->$method($attr, $serial_e, $cg, $stash, $context);
+  return $self->$method($attr, $serial_e, $dest_e, $cg, $stash, $context);
 }
 
 sub _gh_TrustedDeserializatorPattern
 {
-  # my ($self, $attr, $serial_e, $cg, $stash, $context) = @_;
-  return ($_[2], '');
+  # my ($self, $attr, $serial_e, $dest_e, $cg, $stash, $context) = @_;
+  return $_[3] ? ('', "$_[3] = $_[2];\n") : ($_[2], '');
 }
 
 sub _gh_UntrustedDeserializatorPattern
 {
-  my ($self, $attr, $serial_e, $cg, $stash, $context) = @_;
+  my ($self, $attr, $serial_e, $dest_e, $cg, $stash, $context) = @_;
   my ($ret_e, $ret_s);
   
   $cg->Push();
   $cg->Use($attr);
 
-  $cg->CreateScalarVar('serial');
-  $ret_e = '#{serial_e}#';
+  if ($dest_e)
+  {
+    $cg->AddNamedPattern('deserialized_e', $dest_e);
+    $ret_e = $ret_s = '';
+  }
+  else
+  {
+    $cg->CreateScalarVar('deserialized');
+    $ret_e = $cg->ExpandPattern('#{deserialized_e}#');
+    $ret_s = $cg->ExpandPattern("my \$#{serial_sv}#;\n");
+  }
 
   my $set_s = ($context && $context->{'dont_validate_attrs'}) ?
       'attr.set_novalidate_s' :
       'attr.set_s';
   $cg->AddNamedPattern(
       'arg_value_e' => $serial_e,
-      'attr.set.write_s' => "#{serial_e}# = #{new_value_e}#;\n");
-  $ret_s = "my \$#{serial_sv}#;\n"
-         . $cg->Generate('deserialize', [$set_s], $stash);
+      'attr.set.write_s' => "#{deserialized_e}# = #{new_value_e}#;\n");
+  $ret_s .= $cg->Generate('deserialize', [$set_s], $stash);
 
   $cg->Pop();
 

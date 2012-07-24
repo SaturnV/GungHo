@@ -28,7 +28,7 @@ my $json_ctx =
       'type' => 'JSON',
       'dont_validate_attrs' => 1,
       'trusted' => 0
-    }
+    };
 
 # ==== Hash Keys ==============================================================
 
@@ -98,16 +98,16 @@ our %CodePatterns =
             # TODO non strict import (missing attrs)
             # TODO non strict import (extra attrs)
 
-            my ($e, $s, $attr_name_e, $value_e);
+            my ($s, $attr_name_e, $value_e);
             my $attrs = $trait_obj->_GetVar($method_type, 'attrs');
             foreach my $attr (@{$attrs})
             {
               $attr_name_e = $cg->QuoteString($attr->Name());
               $value_e = "#{json_obj_e}#->{$attr_name_e}";
-              ($e, $s) = _gh_cg_deserialize_es(
-                  $attr, $value_e, $cg, $stash, $json_ctx);
-              $code .= $s . $cg->ExpandPattern(
-                  "#{new_arg_e}#->{$attr_name_e} = $e;\n");
+              (undef, $s) = _gh_cg_deserialize_es(
+                  $attr, $value_e, "#{new_arg_e}#->{$attr_name_e}",
+                  $cg, $stash, $json_ctx);
+              $code .= $cg->ExpandPattern($s);
             }
 
             return $code;
