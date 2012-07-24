@@ -275,6 +275,17 @@ sub _gh_GetMethodNames
   return ref($method_name) ? @{$method_name} : ($method_name, $method_name);
 }
 
+sub _gh_CodeTemplate
+{
+  my $self = shift;
+  my $what = $_[0];
+  my $what_x = ($what =~ /^json\.ct_(\w+)_s\z/) ? $1 : $what;
+  my $method_specs = $self->{$HK_method_specs};
+  my $ret = $method_specs && $method_specs->{$what_x} &&
+      $method_specs->{$what_x}->{'template'};
+  return $ret // $self->SUPER::_gh_CodeTemplate(@_);
+}
+
 # ==== __PrepareMethods =======================================================
 
 sub __PrepareMethods
@@ -416,6 +427,15 @@ sub _gh_ParseArgMethod_generated_name
 {
   my ($self, $method_name, $method_spec, $method_args, $kw) = @_;
   $method_spec->{'name'}->[1] = $method_args->{$kw};
+}
+
+sub _gh_ParseArgMethod_type
+{
+  my ($self, $method_name, $method_spec, $method_args, $kw) = @_;
+  my $model = $method_args->{$kw};
+  die "TODO: Bad model '$model'"
+    unless (grep { $model eq $_ } @MethodTypes);
+  $method_spec->{'model'} = $model;
 }
 
 sub _gh_ParseArgMethod_flag
