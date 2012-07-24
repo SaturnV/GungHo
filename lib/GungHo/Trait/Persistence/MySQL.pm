@@ -16,11 +16,18 @@ use Scalar::Util;
 
 use GungHo::Trait::Persistence::MySQL::GrepParser qw( parse_grep );
 use GungHo::Names qw( :CG_HOOK_ARGS );
-use GungHo::_Serialize qw( _gh_cg_serialize_e _gh_cg_deserialize_e );
+use GungHo::_Serialize qw( _gh_cg_serialize_es _gh_cg_deserialize_es );
 
 ###### VARS ###################################################################
 
 our $ModName = __PACKAGE__;
+
+my $mysql_ctx =
+    {
+      'name' => $ModName,
+      'type' => 'MySQL SQL database storage',
+      'trusted' => 1
+    };
 
 # ==== Hash Keys ==============================================================
 
@@ -121,9 +128,12 @@ __END__
 
 my $ctpl_load_instantiate = <<__END__;
   #{create_av_x(return)}#
-  my \@#{return_av}# =
-      map { #{class_e}#->_fast_new( { #{persistence._deserialize_z}# } ) }
-          \@{#{rows_e}#};
+  my \@#{return_av}#;
+  foreach (\@{#{rows_e}#})
+  {
+    #{persistence.deserialize_s}#
+    push(\@#{return_av}#, #{class_e}#->_fast_new( { #{deserialized_e}# } ));
+  }
 __END__
 
 my $ctpl_load_return_die = <<__END__;
@@ -150,7 +160,8 @@ my $ctpl_replace_execute = <<__END__;
     state \$sth = #{persistence.dbh_e}#->prepare(
         #{sql.replace_e}#) or
       die "TODO: Prepare (\$#{class_sv}#/replace) failed";
-    \$#{return_sv}# = \$sth->execute(#{persistence._serialize_z}#) or
+    #{persistence.serialize_s}#
+    \$#{return_sv}# = \$sth->execute(#{serialized_e}#) or
       die "TODO: Execute (\$#{class_sv}#/replace) failed";
   }
 __END__
@@ -379,7 +390,7 @@ our %CodePatterns =
 
       # ---- (De)Serialize ----------------------------------------------------
 
-      'persistence._serialize_z' =>
+      'persistence.serialize_s' =>
           sub
           {
             my $cg_args = $_[2];
@@ -387,16 +398,20 @@ our %CodePatterns =
             my $stash = $cg_args->{$CGHA_generate_args}->[0];
             my $trait_obj = _get_trait_obj($stash);
 
-            my @attrs;
+            my ($e, $s);
+            my (@es, @ss);
             foreach my $attr (@{$trait_obj->GetSqlVar('p_attributes')})
             {
-              push(@attrs, _gh_cg_serialize_e($attr, $cg, $stash));
+              ($e, $s) = _gh_cg_serialize_es($attr, $cg, $stash, $mysql_ctx);
+              push(@es, $e);
+              push(@ss, $s);
             }
+            $cg->AddNamedPattern('serialized_e', join(', ', @es));
 
-            return join(', ', @attrs);
+            return join('', @ss);
           },
 
-      'persistence._deserialize_z' =>
+      'persistence.deserialize_s' =>
           sub
           {
             my $cg_args = $_[2];
@@ -405,14 +420,19 @@ our %CodePatterns =
             my $trait_obj = _get_trait_obj($stash);
 
             my $idx = 0;
-            return join(', ',
-                map {
-                      "$_ => " .
-                          _gh_cg_deserialize_e(
-                              $_, "\$_->[" . $idx++ . ']', $cg, $stash)
-                    }
-                    map { $cg->QuoteString($_) }
-                        @{$trait_obj->GetSqlVar('p_attribute_names')});
+            my (@es, @ss);
+            my ($e, $s, $attr_name_e);
+            foreach my $attr (@{$trait_obj->GetSqlVar('p_attributes')})
+            {
+              $attr_name_e = $cg->QuoteString($attr->Name());
+              ($e, $s) = _gh_cg_deserialize_es(
+                  $attr, "\$_->[" . $idx++ . ']', $cg, $stash, $mysql_ctx);
+              push(@es, "$attr_name_e => $e");
+              push(@ss, $s);
+            }
+            $cg->AddNamedPattern('deserialized_e', join(', ', @es));
+
+            return join('', @ss);
           },
 
       # ---- custom variables ------------------------------------------------

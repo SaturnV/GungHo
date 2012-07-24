@@ -16,11 +16,18 @@ use JSON qw();
 use Scalar::Util;
 
 use GungHo::Names qw( :CG_HOOK_ARGS );
-use GungHo::_Serialize qw( _gh_cg_serialize_e _gh_cg_deserialize_e );
+use GungHo::_Serialize qw( _gh_cg_serialize_es _gh_cg_deserialize_es );
 
 ###### VARS ###################################################################
 
 our $ModName = __PACKAGE__;
+
+my $json_ctx =
+    {
+      'name' => $ModName,
+      'type' => 'JSON',
+      'trusted' => 0
+    }
 
 # ==== Hash Keys ==============================================================
 
@@ -89,20 +96,17 @@ our %CodePatterns =
 
             # TODO non strict import (missing attrs)
             # TODO non strict import (extra attrs)
-            my $value_e = '#{json_obj_e}#->{#{attr.name_e}#}';
 
+            my ($e, $s, $attr_name_e, $value_e);
             my $attrs = $trait_obj->_GetVar($method_type, 'attrs');
             foreach my $attr (@{$attrs})
             {
-              $cg->Push();
-              $cg->Use($attr);
-
-              $code .= $cg->ExpandPattern(
-                  '#{new_arg_e}#->{#{attr.name_e}#} = ' .
-                      _gh_cg_deserialize_e($attr, $value_e, $cg, $stash) .
-                      ";\n");
-
-              $cg->Pop();
+              $attr_name_e = $cg->QuoteString($attr->Name());
+              $value_e = "#{json_obj_e}#->{$attr_name_e}";
+              ($e, $s) = _gh_cg_deserialize_es(
+                  $attr, $value_e, $cg, $stash, $json_ctx);
+              $code .= $s . $cg->ExpandPattern(
+                  "#{new_arg_e}#->{$attr_name_e} = $e;\n");
             }
 
             return $code;
@@ -162,18 +166,14 @@ our %CodePatterns =
             $cg->AddNamedPattern('return_value_e' => '#{json_obj_e}#');
             my $code = $cg->ExpandPattern("my \$#{json_obj_sv}# = {};\n");
 
+            my ($e, $s, $attr_name_e);
             my $attrs = $trait_obj->_GetVar($method_type, 'attrs');
             foreach my $attr (@{$attrs})
             {
-              $cg->Push();
-              $cg->Use($attr);
-
-              $code .= $cg->ExpandPattern(
-                  '#{json_obj_e}#->{#{attr.name_e}#} = ' .
-                      _gh_cg_serialize_e($attr, $cg, $stash) .
-                      ";\n");
-
-              $cg->Pop();
+              $attr_name_e = $cg->QuoteString($attr->Name());
+              ($e, $s) = _gh_cg_serialize_es($attr, $cg, $stash, $json_ctx);
+              $code .= $s . $cg->ExpandPattern(
+                  "#{json_obj_e}#->{$attr_name_e} = $e;\n");
             }
 
             return $code;

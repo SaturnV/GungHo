@@ -10,38 +10,30 @@ use Exporter qw( import );
 
 ###### INIT ###################################################################
 
-our @EXPORT_OK = qw( _gh_cg_serialize_e _gh_cg_deserialize_e );
+our @EXPORT_OK = qw( _gh_cg_serialize_es _gh_cg_deserialize_es );
 
 ###### SUBS ###################################################################
 
-# ==== _gh_cg_serialize_e =====================================================
+# ==== _gh_cg_serialize_es ====================================================
 
-sub _gh_cg_serialize_e
+sub _gh_cg_serialize_es
 {
-  # TODO proper serialization through type
-  my ($attr, $cg, $stash) = @_;
-  my $ret;
-
-  # TODO error checking
-  $attr = $meta_class->GetAttributeByName($attr)
-    unless ref($attr);
-  die 'TODO' unless $attr;
-
-  $cg->Push();
-  $cg->Use($attr);
-  $ret = $cg->Generate('serialize', ['attr.get_e'], $stash);
-  $cg->Pop();
-
-  return $ret;
+  # my ($attr, $cg, $stash, $context) = @_;
+  my $attr = shift;
+  my $type = $attr->Type() or
+    die "TODO: Can't get type object for '" . $attr->Name() . "'";
+  return $type->_gh_SerializatorPattern($attr, @_);
 }
 
-# ==== _gh_cg_deserialize_e ===================================================
+# ==== _gh_cg_deserialize_es ==================================================
 
-sub _gh_cg_deserialize_e
+sub _gh_cg_deserialize_es
 {
-  # TODO proper deserialization through type
-  # my ($attr, $serial_e, $cg, $stash) = @_;
-  return $_[1];
+  # my ($attr, $serial_e, $cg, $stash, $context) = @_;
+  my $attr = shift;
+  my $type = $attr->Type() or
+    die "TODO: Can't get type object for '" . $attr->Name() . "'";
+  return $type->_gh_DeserializatorPattern($attr, @_);
 }
 
 ###### THE END ################################################################

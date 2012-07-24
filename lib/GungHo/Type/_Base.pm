@@ -159,6 +159,63 @@ sub _gh_EmitInsert
   return $ret;
 }
 
+# ==== Serialization ==========================================================
+
+# TODO
+# sub Serialize {}
+# sub Deserialize {}
+
+sub _gh_SerializatorPattern
+{
+  # my ($self, $attr, $cg, $stash, $context) = @_;
+  my ($self, $attr, $cg, $stash) = @_;
+  my $ret_e;
+
+  $cg->Push();
+  $cg->Use($attr);
+  $ret_e = $cg->Generate('serialize', ['attr.get_e'], $stash);
+  $cg->Pop();
+
+  return ($ret_e, '');
+}
+
+sub _gh_DeserializatorPattern
+{
+  my ($self, $attr, $serial_e, $cg, $stash, $context) = @_;
+  my $method = ($context && $context->{'trusted'}) ?
+      '_gh_TrustedDeserializatorPattern' :
+      '_gh_UntrustedDeserializatorPattern';
+  return $self->$method($attr, $serial_e, $cg, $stash, $context);
+}
+
+sub _gh_TrustedDeserializatorPattern
+{
+  # my ($self, $attr, $serial_e, $cg, $stash, $context) = @_;
+  return ($_[2], '');
+}
+
+sub _gh_UntrustedDeserializatorPattern
+{
+  my ($self, $attr, $serial_e, $cg, $stash, $context) = @_;
+  my ($ret_e, $ret_s);
+  
+  $cg->Push();
+  $cg->Use($attr);
+
+  $cg->CreateScalarVar('serial');
+  $ret_e = '#{serial_e}#';
+
+  $cg->AddNamedPattern(
+      'arg_value_e' => $serial_e,
+      'attr.set.write_s' => "#{serial_e}# = #{new_value_e}#;\n");
+  $ret_s = "my \$#{serial_sv}#;\n"
+         . $cg->Generate('deserialize', ['attr.set_s'], $stash);
+
+  $cg->Pop();
+
+  return ($ret_e, $ret_s);
+}
+
 ###### THE END ################################################################
 
 1

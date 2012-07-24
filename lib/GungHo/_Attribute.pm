@@ -500,6 +500,8 @@ sub _gh_PrepareStash
 
 # ==== Type ===================================================================
 
+sub Type { return $_[0]->{$HK_type} }
+
 sub _gh_DefaultType { return 'Any' }
 
 sub _gh_SplitRequestedType
