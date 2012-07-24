@@ -44,8 +44,8 @@ sub _gh_ValidatorPattern
 sub ConvertToType { return !!$_[1] }
 sub _gh_ConvertToTypePattern { return "!!$_[1]" }
 
-sub TransformValueOut { return !!$_[1] }
-sub _gh_TransformValueOutPattern { return "!!$_[1]" }
+# sub TransformValueOut { return !!$_[1] }
+# sub _gh_TransformValueOutPattern { return "!!$_[1]" }
 
 # TODO Replace this with the right stuff
 sub _gh_PrepareCodeGenerator
@@ -57,11 +57,35 @@ sub _gh_PrepareCodeGenerator
   $cg->AddNamedPattern(
       'attr.convert_to_type_s' =>
           '#{define_cond_x(set_value_e,"!!#{arg_value_e}#")}#',
-      'attr.transform_value_out_s' =>
-          '#{define_x(return_value_e,"!!#{attr_value_e}#")}#');
+      # 'attr.transform_value_out_s' =>
+      #     '#{define_x(return_value_e,"!!#{attr_value_e}#")}#'
+      );
 
   return undef;
 }
+
+# =============================================================================
+
+sub _gh_SerializatorPattern
+{
+  my ($self, $attr, $cg, $stash, $context) = @_;
+  my $ret_e;
+
+  $cg->Push();
+  $cg->Use($attr);
+  $ret_e = ($context && ($context->{'type'} ~~ /\bMySQL\b/)) ?
+      $cg->ExpandPattern("#{attr.get_e}# ? 1 : 0") :
+      $cg->ExpandPattern('#{attr.get_e}#');
+  $cg->Pop();
+
+  return ($ret_e, '');
+}
+
+sub _gh_DeserializatorPattern
+{
+  return shift->_gh_UntrustedDeserializatorPattern(@_);
+}
+
 
 ###### THE END ################################################################
 
