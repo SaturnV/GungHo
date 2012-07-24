@@ -24,7 +24,7 @@ do
   fi
 done
 
-echo "Successfully ran $n/$ok tests."
+echo "Successfully ran $ok/$n tests."
 
 if [[ -n "$failed_test" ]]
 then
