@@ -403,6 +403,7 @@ our %CodePatterns =
             foreach my $attr (@{$trait_obj->GetSqlVar('p_attributes')})
             {
               ($e, $s) = _gh_cg_serialize_es($attr, $cg, $stash, $mysql_ctx);
+              $e = 'undef' if (!defined($e) || ($e eq ''));
               push(@es, $e);
               push(@ss, $s);
             }

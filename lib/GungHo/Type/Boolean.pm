@@ -78,7 +78,7 @@ sub _gh_SerializatorPattern
       $cg->ExpandPattern('#{attr.get_e}#');
   $cg->Pop();
 
-  return ($ret_e, '');
+  return ($ret_e, '', $ret_e);
 }
 
 sub _gh_DeserializatorPattern

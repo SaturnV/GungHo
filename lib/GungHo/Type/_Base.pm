@@ -176,7 +176,7 @@ sub _gh_SerializatorPattern
   $ret_e = $cg->Generate('serialize', ['attr.get_e'], $stash);
   $cg->Pop();
 
-  return ($ret_e, '');
+  return ($ret_e, '', "defined($ret_e)");
 }
 
 sub _gh_DeserializatorPattern

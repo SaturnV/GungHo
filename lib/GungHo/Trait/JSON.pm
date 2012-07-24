@@ -167,14 +167,21 @@ our %CodePatterns =
             $cg->AddNamedPattern('return_value_e' => '#{json_obj_e}#');
             my $code = $cg->ExpandPattern("my \$#{json_obj_sv}# = {};\n");
 
-            my ($e, $s, $attr_name_e);
+            my ($e, $s, $c, $attr_name_e);
             my $attrs = $trait_obj->_GetVar($method_type, 'attrs');
+            my $suppress_flag = $trait_obj->_GetVar(
+                $method_type, 'suppress_flag');
             foreach my $attr (@{$attrs})
             {
               $attr_name_e = $cg->QuoteString($attr->Name());
-              ($e, $s) = _gh_cg_serialize_es($attr, $cg, $stash, $json_ctx);
-              $code .= $s . $cg->ExpandPattern(
-                  "#{json_obj_e}#->{$attr_name_e} = $e;\n");
+              ($e, $s, $c) =
+                  _gh_cg_serialize_es($attr, $cg, $stash, $json_ctx);
+              $code .= $cg->ExpandPattern(
+                  (defined($suppress_flag) &&
+                   $attr->HasFlag($suppress_flag) && $c) ?
+                      "$s#{json_obj_e}#->{$attr_name_e} = $e if $c;\n" :
+                      "$s#{json_obj_e}#->{$attr_name_e} = $e;\n")
+                if ($e || $s);
             }
 
             return $code;
@@ -444,6 +451,12 @@ sub _gh_ParseArgMethod_flag
   $method_spec->{'flag'} = $method_args->{$kw};
 }
 
+sub _gh_ParseArgMethod_suppress_flag
+{
+  my ($self, $method_name, $method_spec, $method_args, $kw) = @_;
+  $method_spec->{'suppress_flag'} = $method_args->{$kw};
+}
+
 # ---- __CreateVars -----------------------------------------------------------
 
 sub __CreateVars
@@ -457,6 +470,11 @@ sub __CreateVars
     $flag ||= 'json';
     $vars->{'flag'} = $flag;
     $vars->{'attrs'} = [ $host->GetAttributesWithFlag($flag) ];
+  }
+
+  foreach my $k (qw( suppress_flag ))
+  {
+    $vars->{$k} = $spec->{$k} if defined($spec->{$k});
   }
 }
 
