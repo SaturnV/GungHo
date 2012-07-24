@@ -83,7 +83,17 @@ sub _gh_SerializatorPattern
 
 sub _gh_DeserializatorPattern
 {
-  return shift->_gh_UntrustedDeserializatorPattern(@_);
+  # my ($self, $attr, $serial_e, $dest_e, $cg, $stash, $context) = @_;
+  my $self = shift;
+  my @args = @_;
+  if ($_[5])
+  {
+    my $context = { %{$_[5]} };
+    $context->{'dont_validate_attrs'} = 1
+      if $context->{'trusted'};
+    $args[5] = $context;
+  }
+  return $self->_gh_UntrustedDeserializatorPattern(@args);
 }
 
 
