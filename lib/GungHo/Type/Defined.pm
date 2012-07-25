@@ -18,24 +18,51 @@ use parent qw( GungHo::Type::Any );
 ###### VARS ###################################################################
 
 our $ModName = __PACKAGE__;
-
-our $TypeName = $ModName->TypeName();
+our $TypeName = $ModName->Name();
 
 ###### METHODS ################################################################
+
+sub new
+{
+  my $class = shift;
+  my $parent_type = shift;
+  die "TODO: Defined type expects no arguments" if @_;
+
+  my $self = bless({}, $class);
+  if (defined($parent_type))
+  {
+    $self->{'parent'} = $parent_type;
+    Scalar::Util::weaken($self->{'parent'})
+      if ref($parent_type);
+  }
+
+  return $self;
+}
 
 # $type->Validate($arg)
 sub Validate
 {
-  die "TODO::TypeError[" . $_[0]->TypeName() . "]: Undefined value"
-    unless defined($_[1]);
+  my $self = shift;
+  if (!$self->{'parent'} || !$self->{'parent'}->isa('GungHo::Type::Optional'))
+  {
+    die "TODO::TypeError[$TypeName]: Undefined value"
+      unless defined($_[0]);
+  }
 }
 
 # $type->_gh_ValidatorPattern($arg_pattern)
 sub _gh_ValidatorPattern
 {
-  my $type_name = quotemeta($_[0]->TypeName());
-  return "die 'TODO::TypeError[$type_name]: Undefined value'\n" .
-         "  unless defined($_[1]);\n";
+  my $self = shift;
+  my $ret = '';
+
+  if (!$self->{'parent'} || !$self->{'parent'}->isa('GungHo::Type::Optional'))
+  {
+    $ret = "die 'TODO::TypeError[$TypeName]: Undefined value'\n" .
+           "  unless defined($_[0]);\n";
+  }
+
+  return $ret;
 }
 
 ###### THE END ################################################################

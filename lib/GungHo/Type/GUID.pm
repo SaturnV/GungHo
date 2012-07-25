@@ -21,7 +21,7 @@ use parent qw( GungHo::Type::String );
 
 our $ModName = __PACKAGE__;
 
-our $TypeName = $ModName->TypeName();
+our $TypeName = $ModName->Name();
 
 my $re_guid = qr/^[0-9a-f]{32}\z/i;
 
@@ -32,7 +32,7 @@ sub Validate
 {
   my $self = shift;
   $self->SUPER::Validate(@_);
-  die "TODO::TypeError[" . $self->TypeName() . "]: Doesn't look good."
+  die "TODO::TypeError[$TypeName]: Doesn't look good."
     unless ($_[0] =~ $re_guid);
 }
 
@@ -40,9 +40,8 @@ sub Validate
 sub _gh_ValidatorPattern
 {
   my $self = shift;
-  my $type_name = quotemeta($self->TypeName());
   return $self->SUPER::_gh_ValidatorPattern(@_) .
-         "die 'TODO::TypeError[$type_name]: Does not look good.'\n" .
+         "die 'TODO::TypeError[$TypeName]: Does not look good.'\n" .
          "  unless  ($_[0] =~ /$re_guid/);\n";
 }
 

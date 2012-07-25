@@ -14,6 +14,7 @@ use Scalar::Util;
 
 use GungHo::Names qw( :HOOK_NAMES :CG_HOOK_ARGS );
 use GungHo::Utils qw( _ProcessParameters );
+use GungHo::Type qw( parse_and_load_type );
 use GungHo::CodeGenerator;
 
 use parent qw( GungHo::_Hookable
@@ -504,30 +505,15 @@ sub Type { return $_[0]->{$HK_type} }
 
 sub _gh_DefaultType { return 'Any' }
 
-sub _gh_SplitRequestedType
-{
-  # TODO
-  # return $requested_type unless wantarray;
-  # return ($requested_type, @args);
-  return $_[1];
-}
-
 sub _gh_ProcessTypeParameters
 {
   my $self = $_[0];
   my $attr_spec = $_[1];
+
   my $requested_type = delete($attr_spec->{'type'}) ||
       $self->_gh_DefaultType();
-
-  # Parse type argument into type and parameters
-  my ($requested_type_name, @requested_type_args) =
-      $self->_gh_SplitRequestedType($requested_type);
-
-  # Load and instantiate type
-  my $type_class = GungHo::Registry::get_or_load_type($requested_type_name);
-  my $type_obj = $self->{$HK_type} = $type_class->can('new') ?
-      $type_class->new(@requested_type_args) : $type_class;
-  # warn "*** type r: $requested_type_name, c: $type_class, o: $type_obj";
+  my $type_obj = $self->{$HK_type} =
+      parse_and_load_type(undef, $requested_type);
 
   # Let type hook into code generation
   $type_obj->_gh_SetupAttributeHooks($self, $attr_spec)

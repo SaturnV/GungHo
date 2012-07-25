@@ -18,15 +18,14 @@ use parent qw( GungHo::Type::Any );
 ###### VARS ###################################################################
 
 our $ModName = __PACKAGE__;
-
-our $TypeName = $ModName->TypeName();
+our $TypeName = $ModName->Name();
 
 ###### METHODS ################################################################
 
 # $type->Validate($arg)
 sub Validate
 {
-  die "TODO::TypeError[" . $_[0]->TypeName() . "]: Not a boolean"
+  die "TODO::TypeError[$TypeName]: Not a boolean"
     if (defined($_[1]) && ($_[1] !~ /^1?\z/));
 }
 
@@ -34,8 +33,7 @@ sub Validate
 sub _gh_ValidatorPattern
 {
   my $self = shift;
-  my $type_name = quotemeta($self->TypeName());
-  return "die 'TODO::TypeError[$type_name]: Not a boolean'\n" .
+  return "die 'TODO::TypeError[$TypeName]: Not a boolean'\n" .
          "  if (defined($_[0]) && ($_[0] !~ /^1?\\z/));\n";
 }
 

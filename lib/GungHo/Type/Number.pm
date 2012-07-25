@@ -20,8 +20,7 @@ use parent qw( GungHo::Type::String );
 ###### VARS ###################################################################
 
 our $ModName = __PACKAGE__;
-
-our $TypeName = $ModName->TypeName();
+our $TypeName = $ModName->Name();
 
 ###### METHODS ################################################################
 
@@ -30,7 +29,7 @@ sub Validate
 {
   my $self = shift;
   $self->SUPER::Validate(@_);
-  die "TODO::TypeError[" . $self->TypeName() . "]: Not a number"
+  die "TODO::TypeError[$TypeName]: Not a number"
     unless Scalar::Util::looks_like_number($_[0]);
 }
 
@@ -38,9 +37,8 @@ sub Validate
 sub _gh_ValidatorPattern
 {
   my $self = shift;
-  my $type_name = quotemeta($self->TypeName());
   return $self->SUPER::_gh_ValidatorPattern(@_) .
-         "die 'TODO::TypeError[$type_name]: Not a number'\n" .
+         "die 'TODO::TypeError[$TypeName]: Not a number'\n" .
          "  unless Scalar::Util::looks_like_number($_[0]);\n";
 }
 

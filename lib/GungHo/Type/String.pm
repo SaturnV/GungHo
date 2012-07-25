@@ -18,8 +18,7 @@ use parent qw( GungHo::Type::Defined );
 ###### VARS ###################################################################
 
 our $ModName = __PACKAGE__;
-
-our $TypeName = $ModName->TypeName();
+our $TypeName = $ModName->Name();
 
 ###### METHODS ################################################################
 
@@ -28,7 +27,7 @@ sub Validate
 {
   my $self = shift;
   $self->SUPER::Validate(@_);
-  die "TODO::TypeError[" . $self->TypeName() . "]: Reference"
+  die "TODO::TypeError[$TypeName]: Reference"
     if ref($_[0]);
 }
 
@@ -36,9 +35,8 @@ sub Validate
 sub _gh_ValidatorPattern
 {
   my $self = shift;
-  my $type_name = quotemeta($self->TypeName());
   return $self->SUPER::_gh_ValidatorPattern(@_) .
-         "die 'TODO::TypeError[$type_name]: Reference'\n" .
+         "die 'TODO::TypeError[$TypeName]: Reference'\n" .
          "  if ref($_[0]);\n";
 }
 
