@@ -10,8 +10,6 @@ use strict;
 use warnings;
 use feature ':5.10';
 
-use UUID;
-
 ###### INIT ###################################################################
 
 use parent qw( GungHo::Type::Any );
