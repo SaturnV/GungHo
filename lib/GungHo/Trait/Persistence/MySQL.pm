@@ -87,7 +87,7 @@ my $ctpl_load_by_id_execute = <<__END__;
   }
   else
   {
-    state \$sth_single = #{persistence.dbh_e}#->prepare(
+    my \$sth_single = #{persistence.dbh_e}#->prepare(
         "#{sql.select_header_str}# WHERE #{sql.id_col_str}# = ?") or
       die "TODO: Prepare (\$#{class_sv}#/load_by_id/single) failed";
     \$#{sth_sv}# = \$sth_single;
@@ -99,7 +99,7 @@ __END__
 
 my $ctpl_load_all_execute = <<__END__;
   #{create_sv_x(sth)}#
-  state \$#{sth_sv}# = #{persistence.dbh_e}#->prepare(
+  my \$#{sth_sv}# = #{persistence.dbh_e}#->prepare(
       "#{sql.select_header_str}#") or
     die "TODO: Prepare (\$#{class_sv}#/load_all) failed";
   #{sth_e}#->execute() or
@@ -109,7 +109,7 @@ __END__
 # TODO Proper loader name
 my $ctpl_load_custom_fixsql_execute = <<__END__;
   #{create_sv_x(sth)}#
-  state \$#{sth_sv}# = #{persistence.dbh_e}#->prepare(
+  my \$#{sth_sv}# = #{persistence.dbh_e}#->prepare(
       "#{sql.select_header_str}#" .
       "#{mysql.cv(where_str)}#" .
       "#{mysql.cv(order_str)}#") or
@@ -157,7 +157,7 @@ __END__
 my $ctpl_replace_execute = <<__END__;
   my \$#{return_sv}#;
   {
-    state \$sth = #{persistence.dbh_e}#->prepare(
+    my \$sth = #{persistence.dbh_e}#->prepare(
         #{sql.replace_e}#) or
       die "TODO: Prepare (\$#{class_sv}#/replace) failed";
     #{persistence.serialize_s}#
@@ -191,7 +191,7 @@ my $ctpl_destroy_by_id_execute = <<__END__;
     }
     else
     {
-      state \$sth_single = #{persistence.dbh_e}#->prepare(
+      my \$sth_single = #{persistence.dbh_e}#->prepare(
           "DELETE FROM #{sql.table_str}# WHERE #{sql.id_col_str}# = ?") or
         die "TODO: Prepare (\$#{class_sv}#/destroy_by_id/single) failed";
       \$sth = \$sth_single;
