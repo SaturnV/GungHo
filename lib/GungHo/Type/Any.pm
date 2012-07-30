@@ -36,10 +36,19 @@ sub _gh_SerializatorPattern
   my ($self, $attr, $cg, $stash) = @_;
   my $ret_e;
 
-  $cg->Push();
-  $cg->Use($attr);
-  $ret_e = $cg->Generate('serialize', ['attr.get_e'], $stash);
-  $cg->Pop();
+  my ($rep, $gen) = $attr->_gh_GetMethodNames('get');
+  if (!defined($rep) || !defined($gen) || ($rep eq $gen))
+  {
+    $cg->Push();
+    $cg->Use($attr);
+    $ret_e = $cg->Generate('serialize', ['attr.get_e'], $stash);
+    $cg->Pop();
+  }
+  else
+  {
+    die "TODO: No getter" unless $rep;
+    $ret_e = "#{self_e}#->$rep()";
+  }
 
   return ($ret_e, '', "defined($ret_e)");
 }
@@ -61,6 +70,7 @@ sub _gh_TrustedDeserializatorPattern
 
 sub _gh_UntrustedDeserializatorPattern
 {
+  # TODO Overridden setter
   my ($self, $attr, $serial_e, $dest_e, $cg, $stash, $context) = @_;
   my ($ret_e, $ret_s);
   
