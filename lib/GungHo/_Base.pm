@@ -16,6 +16,8 @@ use GungHo::Utils;
 use GungHo::Names qw( :HOOK_NAMES :STASH_KEYS_NEW );
 use GungHo::Registry qw( get_meta_class );
 
+use Data::Dumper qw( Dumper );
+
 ###### VARS ###################################################################
 
 our $ModName = __PACKAGE__;
@@ -50,7 +52,7 @@ sub _gh_new_process_arguments
       $H_hnpa_consume_args,
       sub
       {
-        die 'TODO::ArgsRemain'
+        die 'TODO::ArgsRemain: ' . Dumper($_[3]->{$S_new_arguments})
           if ($_[3]->{$S_new_arguments} &&
               %{$_[3]->{$S_new_arguments}});
       },
