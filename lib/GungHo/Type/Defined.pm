@@ -58,7 +58,7 @@ sub _gh_ValidatorPattern
 
   if (!$self->{'parent'} || !$self->{'parent'}->isa('GungHo::Type::Optional'))
   {
-    $ret = "die 'TODO::TypeError[$TypeName]: Undefined value'\n" .
+    $ret = "die 'TODO::TypeError[$TypeName]: Undefined value: *** $_[0] ***'\n" .
            "  unless defined($_[0]);\n";
   }
 
