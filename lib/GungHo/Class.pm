@@ -256,8 +256,16 @@ sub GetSuperMetaClasses
 # Return superclasses supplied by user
 sub _gh_GetExplicitSuperClasses
 {
-  my $isa_requested = $_[0]->{$HK_spec}->{'isa'};
-  return $isa_requested ? @{$isa_requested} : ();
+  my $self = $_[0];
+  my @ret;
+
+  my $isa_requested = $self->{$HK_spec}->{'isa'};
+  @ret = @{$isa_requested} if $isa_requested;
+
+  # __hook__($hook_runner, $hook_name, $class, \@ret)
+  $self->_gh_RunHooks('gh_class_get_super_classes', $self, \@ret);
+
+  return @ret;
 }
 
 # ---- _gh_GetImplicitSuperClasses --------------------------------------------

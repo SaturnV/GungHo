@@ -72,7 +72,7 @@ GungHo::Class->build(
           'attr2' => { 'get' => 'A2', 'set' => 'SetA2' }
         ]);
 
-can_ok('MysqlTest', 'load', 'load_all', 'destroy', 'Save', 'Destroy');
+can_ok('MysqlTest', 'load', 'destroy', 'Save', 'Destroy');
 
 # ==== CRUD ===================================================================
 
@@ -108,7 +108,7 @@ is_deeply(
 # ---- R ----------------------------------------------------------------------
 
 {
-  my $a_loaded = MysqlTest->load($a_id);
+  my $a_loaded = MysqlTest->load('id' => $a_id);
   ok($a_loaded, 'load a');
 
   is_deeply(
@@ -163,7 +163,7 @@ my $c_row = obj_to_row($c_obj);
   # load multiple
   {
     my @loaded_objs =
-        sort { $a->A1() cmp $b->A1() } MysqlTest->load(@obj_ids);
+        sort { $a->A1() cmp $b->A1() } MysqlTest->load('id' => \@obj_ids);
     my @loaded_rows = obj_to_row(@loaded_objs);
     is_deeply(\@loaded_rows, \@obj_rows, 'load multiple');
   }
@@ -171,9 +171,20 @@ my $c_row = obj_to_row($c_obj);
   # load all
   {
     my @loaded_objs = 
-        sort { $a->A1() cmp $b->A1() } MysqlTest->load_all();
+        sort { $a->A1() cmp $b->A1() } MysqlTest->load();
     my @loaded_rows = obj_to_row(@loaded_objs);
     is_deeply(\@loaded_rows, [$c_row, @obj_rows], 'load all');
+  }
+
+  # load filter
+  {
+    my @loaded_objs =
+        sort { $a->A1() cmp $b->A1() }
+            MysqlTest->load(
+                'attr2' => { '>' => 'a', '<' => 'd' },
+                'attr1' => { 'LIKE' => '%q%' });
+    my @loaded_rows = obj_to_row(@loaded_objs);
+    is_deeply(\@loaded_rows, [@obj_rows[1,2]], 'load filter');
   }
 
   # delete multiple
