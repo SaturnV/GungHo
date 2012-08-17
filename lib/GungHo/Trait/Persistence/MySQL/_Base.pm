@@ -26,6 +26,7 @@ sub _load_sql_builder_param
   if (my $attr = $meta_class->GetAttributeByName($n))
   {
     my $col = $class_db_descr->{'attr_column_map'}->{$n} || $n;
+    $col = "$table_alias.$col";
 
     if (!ref($v))
     {
@@ -51,12 +52,14 @@ sub _load_sql_builder_param
     }
     elsif ($v->isa('GungHo::SQL::Query::Literal'))
     {
-      $select->AddWhere($v->Sql(), $v->SqlParameters());
+      $select->AddWhere("$col = " . $v->Sql(), $v->SqlParameters());
     }
     else
     {
       die 'TODO';
     }
+
+    $ret = 1;
   }
 
   return $ret;
