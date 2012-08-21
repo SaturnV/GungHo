@@ -82,10 +82,11 @@ sub Build
     $sql .= ' FROM ' . join(', ', @ts);
   }
 
+  if (my @ws = @{$self->{'where'}})
   {
+    @ws = map { "($_)" } @ws if $#ws;
     local $" = ' AND ';
-    my @ws = @{$self->{'where'}};
-    $sql .= " WHERE @ws" if @ws;
+    $sql .= " WHERE @ws";
   }
 
   return ($sql, @{$self->{'params'}});
