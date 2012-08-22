@@ -128,8 +128,23 @@ sub Build
   my ($sql, @params);
 
   {
-    my @fs = @{$self->{'select'}};
-    die "TODO: No fields SELECTed" unless @fs;
+    my @s = @{$self->{'select'}};
+    die "TODO: No fields SELECTed" unless @s;
+
+    my @fs;
+    foreach (@s)
+    {
+      if (ref)
+      {
+        my @x = @{$_};
+        push(@fs, shift(@x));
+        push(@params, @x);
+      }
+      else
+      {
+        push(@fs, $_);
+      }
+    }
 
     local $" = ', ';
     $sql = "SELECT @fs";
