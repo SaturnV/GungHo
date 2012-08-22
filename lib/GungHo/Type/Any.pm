@@ -65,15 +65,16 @@ sub _gh_DeserializatorPattern
 sub _gh_TrustedDeserializatorPattern
 {
   # my ($self, $attr, $serial_e, $dest_e, $cg, $stash, $context) = @_;
-  return $_[3] ? ('', "$_[3] = $_[2];\n") : ($_[2], '');
+  return ($_[2], ($_[3] && ($_[3] ne $_[2])) ? "$_[3] = $_[2];\n" : '');
 }
 
 sub _gh_UntrustedDeserializatorPattern
 {
   # TODO Overridden setter
+  # TODO Optimize for in place deserialization
   my ($self, $attr, $serial_e, $dest_e, $cg, $stash, $context) = @_;
   my ($ret_e, $ret_s);
-  
+
   $cg->Push();
   $cg->Use($attr);
 
