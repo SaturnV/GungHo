@@ -122,6 +122,18 @@ sub AddHaving
   return $self;
 }
 
+sub ReadLock
+{
+  $_[0]->{'readlock'} = 1;
+  return $_[0];
+}
+
+sub WriteLock
+{
+  $_[0]->{'writelock'} = 1;
+  return $_[0];
+}
+
 sub Build
 {
   my $self = shift;
@@ -181,6 +193,15 @@ sub Build
     local $" = ' AND ';
     $sql .= " HAVING @hs";
     push(@params, @{$self->{'having_params'}});
+  }
+
+  if ($self->{'writelock'})
+  {
+    $sql .= ' FOR UPDATE';
+  }
+  elsif ($self->{'readlock'})
+  {
+    $sql .= ' LOCK IN SHARE MODE';
   }
 
   return ($sql, @params);
