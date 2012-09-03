@@ -11,6 +11,7 @@ use warnings;
 use feature ':5.10';
 
 use GungHo::SQL::Query::Select;
+use GungHo::SQL::Query::Delete;
 use GungHo::SQL::Query::Literal;
 
 ###### METHODS ################################################################

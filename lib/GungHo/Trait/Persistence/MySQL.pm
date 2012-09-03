@@ -41,9 +41,8 @@ our $HK_method_specs = 'method_specs';
 
 our @MethodTypes = qw(
     _load_by_sql_deserialize
-    get_sql_select_info
+    get_sql_table_info
     save
-    destroy_by_id
     destroy_object );
 
 our %MethodNames =
@@ -51,9 +50,8 @@ our %MethodNames =
       # 'method_type' => [qw( reported_name generated_name )]
       # 'method_type' => 'name'
       '_load_by_sql_deserialize' => '_load_by_sql_deserialize',
-      'get_sql_select_info' => 'get_sql_select_info',
+      'get_sql_table_info' => 'get_sql_table_info',
       'save' => 'Save',
-      'destroy_by_id' => 'destroy',
       'destroy_object' => 'Destroy'
     );
 
@@ -82,42 +80,6 @@ my $ctpl_replace_execute = <<__END__;
     #{persistence.serialize_s}#
     \$#{return_sv}# = \$sth->execute(#{serialized_e}#) or
       die "TODO: Execute (\$#{class_sv}#/replace) failed";
-  }
-__END__
-
-# ---- destroy ----------------------------------------------------------------
-
-my $ctpl_destroy_by_id_args = <<__END__;
-  #{create_sv_x(class)}#
-  #{define_x(ids_av,_)}#
-  my \$#{class_sv}# = shift;
-__END__
-
-my $ctpl_destroy_by_id_execute = <<__END__;
-  #{create_sv_x(return)}#
-  my \$#{return_sv}#;
-  if (\@#{ids_av}#)
-  {
-    my \$sth;
-
-    if (\$##{ids_av}#)
-    {
-      my \$qms = join(', ', ('?') x scalar(\@#{ids_av}#));
-      \$sth = #{persistence.dbh_e}#->prepare(
-          "DELETE FROM #{sql.table_str}# " . 
-          "WHERE #{sql.id_col_str}# IN (\$qms)") or
-        die "TODO: Prepare (\$#{class_sv}#/destroy_by_id/multiple) failed";
-    }
-    else
-    {
-      my \$sth_single = #{persistence.dbh_e}#->prepare(
-          "DELETE FROM #{sql.table_str}# WHERE #{sql.id_col_str}# = ?") or
-        die "TODO: Prepare (\$#{class_sv}#/destroy_by_id/single) failed";
-      \$sth = \$sth_single;
-    }
-
-    \$#{return_sv}# = \$sth->execute(\@#{ids_av}#) or
-      die "TODO: Execute (\$#{class_sv}#/destroy_by_id) failed";
   }
 __END__
 
@@ -182,12 +144,12 @@ our %CodePatterns =
             return $cg->ExpandPattern($ret);
           },
 
-      # ---- get_sql_select_info ----------------------------------------------
+      # ---- get_sql_table_info ----------------------------------------------
 
       # TODO
-      'persistence.get_sql_select_info_s' =>
-          ['persistence._get_sql_select_info_s'],
-      'persistence._get_sql_select_info_s' =>
+      'persistence.get_sql_table_info_s' =>
+          ['persistence._get_sql_table_info_s'],
+      'persistence._get_sql_table_info_s' =>
           sub
           {
             my $cg_args = $_[2];
@@ -256,7 +218,6 @@ our %CodePatterns =
       'persistence.reload_id_s' =>
           sub
           {
-            # TODO destroy_by_id method name
             # TODO proper id attr lookup?
             # TODO something more prudent instead of attr.write_e
             my $cg_args = $_[2];
@@ -268,7 +229,7 @@ our %CodePatterns =
                 $trait_obj->GetSqlVar('id_attribute_name'));
 
             $cg->Push();
-            $id_attr->_gh_SetupCodeGenerator($cg);
+            $cg->Use($id_attr);
             my $code = $cg->ExpandPattern(
                 "#{attr.write_e}# unless #{attr.exists_e}#;\n",
                 {
@@ -283,22 +244,6 @@ our %CodePatterns =
 
       'persistence.replace.return_s' => $ctpl_return_s,
 
-      # ---- destroy_by_id ----------------------------------------------------
-
-      'persistence.destroy_by_id_s' => [qw(
-          persistence.destroy_by_id.args_s
-          persistence.destroy_by_id.execute_s
-          persistence.destroy_by_id.return_s
-          important_x )],
-
-      # output: class_sv, ids_av
-      'persistence.destroy_by_id.args_s' => $ctpl_destroy_by_id_args,
-
-      # output: sth_sv
-      'persistence.destroy_by_id.execute_s' => $ctpl_destroy_by_id_execute,
-
-      'persistence.destroy_by_id.return_s' => $ctpl_return_s,
-
       # ---- destroy_object ---------------------------------------------------
 
       'persistence.destroy_object_s' => [qw(
@@ -311,7 +256,6 @@ our %CodePatterns =
       'persistence.destroy_object.execute_s' =>
           sub
           {
-            # TODO destroy_by_id method name
             # TODO proper id attr lookup?
             # TODO proper serialization of id
             my $cg_args = $_[2];
@@ -319,13 +263,15 @@ our %CodePatterns =
             my $stash = $cg_args->{$CGHA_generate_args}->[0];
             my $trait_obj = _get_trait_obj($stash);
 
-            my $id_attr = $stash->{'meta_class'}->GetAttributeByName(
-                $trait_obj->GetSqlVar('id_attribute_name'));
+            my $id_attr_name = $trait_obj->GetSqlVar('id_attribute_name');
+            my $id_str = $cg->QuoteString($id_attr_name);
+            my $id_attr = $stash->{'meta_class'}->
+                GetAttributeByName($id_attr_name);
 
             $cg->Push();
-            $id_attr->_gh_SetupCodeGenerator($cg);
+            $cg->Use($id_attr);
             my $code = $cg->ExpandPattern(
-                "#{self_e}#->destroy(#{attr.get_e}#) " .
+                "#{self_e}#->destroy($id_str => #{attr.get_e}#) " .
                     "if #{attr.exists_e}#;\n");
             $cg->Pop();
 

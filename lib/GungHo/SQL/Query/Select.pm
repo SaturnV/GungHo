@@ -10,7 +10,11 @@ use strict;
 use warnings;
 use feature ':5.10';
 
+use parent qw( GungHo::SQL::Query::_Where );
+
 ###### VARS ###################################################################
+
+our @ISA;
 
 ###### METHODS ################################################################
 
@@ -24,14 +28,19 @@ sub new
       {
         'select' => [],
         'from' => [],
-        'where' => [],
-        'where_params' => [],
         'group_by' => [],
         'having' => [],
         'having_params' => []
       };
+  bless($self, $class);
 
-  return bless($self, $class);
+  my $m;
+  foreach (@ISA)
+  {
+    $self->$m() if ($m = $_->can('_Init'));
+  }
+
+  return $self;
 }
 
 sub AddSelect
@@ -97,15 +106,6 @@ sub Join
   return $self;
 }
 
-sub AddWhere
-{
-  my $self = shift;
-  die "TODO: Add what?" unless @_;
-  push(@{$self->{'where'}}, shift);
-  push(@{$self->{'where_params'}}, @_);
-  return $self;
-}
-
 sub AddGroupBy
 {
   my $self = shift;
@@ -167,13 +167,7 @@ sub Build
     }
   }
 
-  if (my @ws = @{$self->{'where'}})
-  {
-    @ws = map { "($_)" } @ws if $#ws;
-    local $" = ' AND ';
-    $sql .= " WHERE @ws";
-    push(@params, @{$self->{'where_params'}});
-  }
+  $self->_BuildWhere($sql, \@params);
 
   if (my @gs = @{$self->{'group_by'}})
   {

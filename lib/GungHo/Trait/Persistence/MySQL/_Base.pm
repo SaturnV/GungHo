@@ -1,6 +1,8 @@
 #! /usr/bin/perl
 # TODO: License
-# TODO: There is nothing MySQL specific in this module
+# TODO: There is not much (':lock') MySQL specific in this module
+#       and that would be very easy to factor out.
+# TODO; JOIN
 ###### NAMESPACE ##############################################################
 
 package GungHo::Trait::Persistence::MySQL::_Base;
@@ -12,25 +14,74 @@ use warnings;
 use feature ':5.10';
 
 use GungHo::SQL::Query;
+use GungHo::SQL::Utils qw( get_col_for_attr );
 use GungHo::Utils qw( make_hashref );
 
 ###### METHODS ################################################################
 
-sub _load_sql_builder_param
+# ==== common =================================================================
+
+sub _sql_name
 {
-  my ($class, $select, $table_alias, $class_db_descr, $dumpster, $n, $v) = @_;
+  my $class = ref($_[0]) || $_[0];
+  # my $params = $_[1];
+  return "$class/" . ($_[1]->{'name'} // 'anon_sql');
+}
+
+# ---- DBI --------------------------------------------------------------------
+
+# my ($params, $sth, @sql_params) = $class->_prepare_sql(@_);
+sub _prepare_sql
+{
+  my ($class, $params, $sql, @sql_params) = @_;
+  my $sth;
+
+  ($sql, @sql_params) = $sql->Build()
+    if (Scalar::Util::blessed($sql) && $sql->can('Build'));
+
+  # TODO dbh
+  my $dbh = $main::DBH;
+  if (!($sth = $dbh->prepare($sql)))
+  {
+    my $sql_name = $class->_sql_name($params);
+    die "TODO: Prepare ($sql_name) failed";
+  }
+
+  return ($params, $sth, @sql_params);
+}
+
+sub _execute_nonselect_sth
+{
+  my $class = shift;
+  my $params = shift;
+  my $sth = shift;
+  my $ret;
+
+  if (!($ret = $sth->execute(@_)))
+  {
+    my $sql_name = $class->_sql_name($params);
+    die "TODO: Execute ($sql_name) failed";
+  }
+
+  return $ret;
+}
+
+# ---- SQL building -----------------------------------------------------------
+
+sub _sql_builder_param
+{
+  my ($class, $sql, $table_alias, $table_info, $dumpster, $n, $v) = @_;
   my $ret;
 
   my $meta_class = $class->get_meta_class() or
     die 'TODO';
   if (my $attr = $meta_class->GetAttributeByName($n))
   {
-    my $col = $class_db_descr->{'attr_column_map'}->{$n} || $n;
-    $col = "$table_alias.$col";
+    my $col = get_col_for_attr($table_info, $n, $table_alias);
 
     if (!ref($v))
     {
-      $select->AddWhere("$col = ?", $v);
+      $sql->AddWhere("$col = ?", $v);
     }
     elsif (ref($v) eq 'ARRAY')
     {
@@ -38,21 +89,21 @@ sub _load_sql_builder_param
       if ($#{$v})
       {
         my $qs = join(', ', ('?') x scalar(@{$v}));
-        $select->AddWhere("$col IN ($qs)", @{$v});
+        $sql->AddWhere("$col IN ($qs)", @{$v});
       }
       else
       {
-        $select->AddWhere("$col = ?", $v->[0]);
+        $sql->AddWhere("$col = ?", $v->[0]);
       }
     }
     elsif (ref($v) eq 'HASH')
     {
-      $select->AddWhere("$col $_ ?", $v->{$_})
+      $sql->AddWhere("$col $_ ?", $v->{$_})
         foreach (keys(%{$v}));
     }
     elsif ($v->isa('GungHo::SQL::Query::Literal'))
     {
-      $select->AddWhere("$col = " . $v->Sql(), $v->SqlParameters());
+      $sql->AddWhere("$col = " . $v->Sql(), $v->SqlParameters());
     }
     else
     {
@@ -65,29 +116,81 @@ sub _load_sql_builder_param
   return $ret;
 }
 
-sub _load_sql_builder
+sub _sql_builder
 {
-  my ($class, $select, $table_alias, $class_db_descr, $dumpster) =
+  my ($class, $sql, $table_alias, $table_info, $dumpster) =
       splice(@_, 0, 5);
   my $params = make_hashref(@_);
+
+  my $param_handler = $dumpster->{'op'};
+  $param_handler = $class->can("_${param_handler}_sql_builder_param")
+    if $param_handler;
+  $param_handler //= $class->can('_sql_builder_param');
 
   foreach (keys(%{$params}))
   {
     $dumpster->{$_} = $params->{$_}
-      unless $class->_load_sql_builder_param(
-                 $select, $table_alias, $class_db_descr, $dumpster,
+      unless $class->$param_handler(
+                 $sql, $table_alias, $table_info, $dumpster,
                  $_, $params->{$_});
   }
 
   return 1;
 }
 
-sub _load_sql
+# ==== load ===================================================================
+
+# ---- SQL building -----------------------------------------------------------
+
+sub _load_sql_builder_param
 {
   my $class = shift;
-  my $dumpster = {};
+  my ($sql, $table_alias, $table_info, $dumpster, $n, $v) = @_;
+  my $ret;
 
-  my $class_db_descr = $class->get_sql_select_info();
+  if ($n eq ':lock')
+  {
+    given ($v)
+    {
+      when ('read')
+      {
+        $sql->ReadLock();
+      }
+      when ('write')
+      {
+        $sql->WriteLock();
+      }
+      default
+      {
+        die 'TODO';
+      }
+    }
+
+    $ret = 1;
+  }
+  else
+  {
+    $ret = $class->_sql_builder_param(@_);
+  }
+
+  return $ret;
+}
+
+sub _load_sql_builder
+{
+  # my ($class, $sql, $table_alias, $table_info, $dumpster) =
+  #     splice(@_, 0, 5);
+  # my $params = make_hashref(@_);
+  return shift->_sql_builder(@_);
+}
+
+sub load_sql
+{
+  my $class = shift;
+  my $dumpster = { 'name' => 'anon_load', 'op' => 'load' };
+
+  my $table_info = $dumpster->{'table_info'} =
+      $class->get_sql_table_info();
   # {
   #   'table' => 'alma',
   #   'attributes' => [qw( id alma atom )],
@@ -96,29 +199,52 @@ sub _load_sql
   #   'key' => [qw( id )],
   # }
 
-  my $select = GungHo::SQL::Query->new();
-  my $table_alias = $select->AddFrom($class_db_descr->{'table'});
-  $select->AddSelect(
-      map { "$table_alias.$_" } @{$class_db_descr->{'columns'}});
-  $dumpster->{'select_info'} = $class_db_descr;
+  my $sql = GungHo::SQL::Query->new('SELECT');
+  my $table_alias = $dumpster->{'table_aliases'}->{'root'} =
+      $sql->AddFrom($table_info->{'table'});
+  $sql->AddSelect(
+      map { "$table_alias.$_" } @{$table_info->{'columns'}});
   $class->_load_sql_builder(
-      $select, $table_alias, $class_db_descr,
+      $sql, $table_alias, $table_info,
       $dumpster, @_);
 
-  return ($dumpster, $select->Build());
+  return ($dumpster, $sql);
 }
+
+# ---- instantiate ------------------------------------------------------------
 
 sub _load_by_sql_instantiate
 {
   my $class = shift;
   my $params = shift;
-  my @attributes = @{$params->{'select_info'}->{'attributes'}};
-  my @ret = map { $class->_fast_new($_) }
-      $class->_load_by_sql_deserialize($params,
-          map { my $h = {} ; @{$h}{@attributes} = @{$_} ; $h } @_);
+  my @ret;
+  my $t;
+
+  if ($t = $params->{'&map_to_hash'})
+  {
+    @ret = $class->$t($params, @_);
+  }
+  else
+  {
+    my @attributes = @{$params->{'table_info'}->{'attributes'}};
+    @ret = map { my $h = {} ; @{$h}{@attributes} = @{$_} ; $h } @_;
+  }
+
+  @ret = $class->$t($params, @ret)
+    if ($t = $params->{'&pre_deserialize_map'});
+
+  @ret = $class->_load_by_sql_deserialize($params, @ret);
+
+  @ret = $class->$t($params, @ret)
+    if ($t = $params->{'&post_deserialize_map'});
+
+  @ret = map { $class->_fast_new($_) } @ret;
+
   return @ret if wantarray;
   return $ret[0];
 }
+
+# ---- execute / fetch --------------------------------------------------------
 
 sub _load_by_sql_sth
 {
@@ -126,7 +252,7 @@ sub _load_by_sql_sth
   my $params = shift;
   my $sth = shift;
 
-  my $sql_name = "$class/" . ($params->{'name'} // 'anon_load');
+  my $sql_name = $class->_sql_name($params);
 
   $sth->execute(@_) or
     die "TODO: Execute ($sql_name) failed";
@@ -148,29 +274,75 @@ sub _load_by_sql_sth
   return $class->_load_by_sql_instantiate($params, @{$rows});
 }
 
-sub _load_by_sql
+# -----------------------------------------------------------------------------
+
+sub load_by_sql
 {
+  # my ($class, $params, $sql_str, @sql_params) = @_;
+  # my ($class, $params, $sql_obj) = @_;
   my $class = shift;
-  my $params = shift;
-  my $sql = shift;
 
-  my $sql_name = "$class/" . ($params->{'name'} // 'anon_load');
-
-  # TODO
-  my $dbh = $main::DBH;
-
-  my $sth = $dbh->prepare($sql) or
-    die "TODO: Prepare ($sql_name) failed";
-
-  return $class->_load_by_sql_sth($params, $sth, @_);
+  # my ($params, $sth, @sql_params) = $class->_prepare_sql(@_);
+  # return $class->_load_by_sql_sth($params, $sth, @sql_params);
+  return $class->_load_by_sql_sth($class->_prepare_sql(@_));
 }
 
 sub load
 {
   my $class = shift;
-  # my ($params, $sql, @sql_params) = $class->_load_sql(@_);
+  # my ($params, $sql, @sql_params) = $class->load_sql(@_);
   # return $class->load_by_sql($params, $sql, @sql_params);
-  return $class->_load_by_sql($class->_load_sql(@_));
+  return $class->load_by_sql($class->load_sql(@_));
+}
+
+# ==== destroy ================================================================
+
+sub _destroy_by_sql_sth { return shift->_execute_nonselect_sth(@_) }
+
+sub _destroy_sql_builder
+{
+  # my ($class, $sql, $table_alias, $table_info, $dumpster) =
+  #     splice(@_, 0, 5);
+  # my $params = make_hashref(@_);
+  return shift->_sql_builder(@_);
+}
+
+sub destroy_sql
+{
+  my $class = shift;
+  my $dumpster = { 'name' => 'anon_destroy', 'op' => 'destroy' };
+
+  my $table_info = $dumpster->{'table_info'} =
+      $class->get_sql_table_info();
+
+  my $sql = GungHo::SQL::Query->new('delete');
+  my $table_alias = $dumpster->{'table_aliases'}->{'root'} =
+      $sql->AddFrom($table_info->{'table'});
+
+  $class->_destroy_sql_builder(
+      $sql, $table_alias, $table_info,
+      $dumpster, @_);
+
+  return ($dumpster, $sql);
+}
+
+sub destroy_by_sql
+{
+  # my ($class, $params, $sql_str, @sql_params) = @_;
+  # my ($class, $params, $sql_obj) = @_;
+  my $class = shift;
+
+  # my ($params, $sth, @sql_params) = $class->_prepare_sql(@_);
+  # return $class->_destroy_by_sql_sth($params, $sth, @sql_params);
+  return $class->_destroy_by_sql_sth($class->_prepare_sql(@_));
+}
+
+sub destroy
+{
+  my $class = shift;
+  # my ($params, $sql, @sql_params) = $class->destroy_sql(@_);
+  # return $class->destroy_by_sql($params, $sql, @sql_params);
+  return $class->destroy_by_sql($class->destroy_sql(@_));
 }
 
 ###### THE END ################################################################

@@ -141,8 +141,8 @@ my $c_id = $c_obj->Id();
 my $c_row = obj_to_row($c_obj);
 
 {
-  MysqlTest->destroy('kjfdsh'); # Destroy bad id
-  MysqlTest->destroy($a_id); # Destroy by id
+  MysqlTest->destroy('id' => 'kjfdsh'); # Destroy bad id
+  MysqlTest->destroy('id' => $a_id); # Destroy by id
   $b_obj->Destroy(); # Object destroy
   
   is_deeply(select_all(), [$c_row], 'destroy single');
@@ -188,7 +188,7 @@ my $c_row = obj_to_row($c_obj);
   }
 
   # delete multiple
-  MysqlTest->destroy(@obj_ids);
+  MysqlTest->destroy('id' => \@obj_ids);
   is_deeply(select_all(), [$c_row], 'destroy multiple');
 }
 
