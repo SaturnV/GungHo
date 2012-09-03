@@ -407,7 +407,7 @@ sub __PrepareSqlStuff
     my $persistent_flag =
         $self->{$HK_args}->{'persistent_flag'} // 'persistent';
     my @attrs = $meta_class->GetAttributesWithFlag($persistent_flag) or
-      die "TODO: No persistent attributes in $class_name.\n";
+      die "TODO: No persistent attributes in $class_name";
     my @attr_names = map { $_->Name() } @attrs;
     my @sql_cols = @attr_names; # TODO
 
@@ -429,14 +429,14 @@ sub __PrepareSqlStuff
       $id_attr = $meta_class->GetAttributeByName($id_attr);
       push(@id_attrs, $id_attr) if $id_attr;
     }
-    die "TODO: No id in $class_name.\n" unless @id_attrs;
-    die "TODO: Multiple ids in $class_name.\n" if $#id_attrs;
+    die "TODO: No id in $class_name" unless @id_attrs;
+    die "TODO: Multiple ids in $class_name" if $#id_attrs;
 
     $sql_vars->{'id_attribute_name'} = $id_attrs[0]->Name();
     $sql_vars->{'id_column'} =
         $sql_vars->{'p_attribute_name_to_column_map'}->
             {$sql_vars->{'id_attribute_name'}} //
-        die "TODO: Id not persistent in $class_name.\n";
+        die "TODO: Id not persistent in $class_name";
   }
 
   return $sql_vars;
