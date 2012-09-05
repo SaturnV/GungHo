@@ -98,8 +98,19 @@ sub _sql_builder_param
     }
     elsif (ref($v) eq 'HASH')
     {
-      $sql->AddWhere("$col $_ ?", $v->{$_})
-        foreach (keys(%{$v}));
+      my $vv;
+      foreach (keys(%{$v}))
+      {
+        if (Scalar::Util::blessed($vv = $v->{$_}) &&
+            $vv->isa('GungHo::SQL::Query::Literal'))
+        {
+          $sql->AddWhere("$col $_ " . $vv->Sql(), $vv->SqlParameters());
+        }
+        else
+        {
+          $sql->AddWhere("$col $_ ?", $vv);
+        }
+      }
     }
     elsif ($v->isa('GungHo::SQL::Query::Literal'))
     {
