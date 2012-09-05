@@ -20,8 +20,8 @@ our @EXPORT_OK = qw( get_col_for_attr $SQL_NULL $SQL_NOT_NULL );
 
 ###### VARS ###################################################################
 
-our $SQL_NULL = { 'IS' => GungHo::SQL::Query::Literal->new('NULL') };
-our $SQL_NOT_NULL = { 'IS' => GungHo::SQL::Query::Literal->new('NOT NULL') };
+our $SQL_NULL = { 'IS' => GungHo::SQL::Query->literal('NULL') };
+our $SQL_NOT_NULL = { 'IS' => GungHo::SQL::Query->literal('NOT NULL') };
 
 ###### SUBS ###################################################################
 
