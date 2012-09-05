@@ -159,29 +159,39 @@ sub _load_sql_builder_param
   my ($sql, $table_alias, $table_info, $dumpster, $n, $v) = @_;
   my $ret;
 
-  if ($n eq ':lock')
+  given ($n)
   {
-    given ($v)
+    when (':lock')
     {
-      when ('read')
+      given ($v)
       {
-        $sql->ReadLock();
+        when ('read')
+        {
+          $sql->ReadLock();
+        }
+        when ('write')
+        {
+          $sql->WriteLock();
+        }
+        default
+        {
+          die 'TODO';
+        }
       }
-      when ('write')
-      {
-        $sql->WriteLock();
-      }
-      default
-      {
-        die 'TODO';
-      }
-    }
 
-    $ret = 1;
-  }
-  else
-  {
-    $ret = $class->_sql_builder_param(@_);
+      $ret = 1;
+    }
+    when (':sort')
+    {
+      $sql->AddOrderBy(
+          map { get_col_for_attr($table_info, $_, $table_alias) }
+              (ref($v) ? @{$v} : ($v)));
+      $ret = 1;
+    }
+    default
+    {
+      $ret = $class->_sql_builder_param(@_);
+    }
   }
 
   return $ret;

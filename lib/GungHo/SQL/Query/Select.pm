@@ -30,7 +30,8 @@ sub new
         'from' => [],
         'group_by' => [],
         'having' => [],
-        'having_params' => []
+        'having_params' => [],
+        'order_by' => []
       };
   bless($self, $class);
 
@@ -122,6 +123,13 @@ sub AddHaving
   return $self;
 }
 
+sub AddOrderBy
+{
+  my $self = shift;
+  push(@{$self->{'order_by'}}, @_);
+  return $self;
+}
+
 sub ReadLock
 {
   $_[0]->{'readlock'} = 1;
@@ -193,6 +201,12 @@ sub Build
     local $" = ' AND ';
     $sql .= " HAVING @hs";
     push(@params, @{$self->{'having_params'}});
+  }
+
+  if (my @os = @{$self->{'order_by'}})
+  {
+    local $" = ', ';
+    $sql .= " ORDER BY @os";
   }
 
   if ($self->{'writelock'})
