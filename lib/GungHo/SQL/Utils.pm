@@ -12,9 +12,16 @@ use feature ':5.10';
 
 use Exporter qw( import );
 
+use GungHo::SQL::Query::Literal;
+
 ###### EXPORTS ################################################################
 
-our @EXPORT_OK = qw( get_col_for_attr );
+our @EXPORT_OK = qw( get_col_for_attr $SQL_NULL $SQL_NOT_NULL );
+
+###### VARS ###################################################################
+
+our $SQL_NULL = { 'IS' => GungHo::SQL::Query::Literal->new('NULL') };
+our $SQL_NOT_NULL = { 'IS' => GungHo::SQL::Query::Literal->new('NOT NULL') };
 
 ###### SUBS ###################################################################
 
