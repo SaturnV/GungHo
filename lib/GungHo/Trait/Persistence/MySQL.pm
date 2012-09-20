@@ -78,7 +78,7 @@ my $ctpl_replace_execute = <<__END__;
         #{sql.replace_e}#) or
       die "TODO: Prepare (\$#{class_sv}#/replace) failed";
     #{persistence.serialize_s}#
-    \$#{return_sv}# = \$sth->execute(#{serialized_e}#) or
+    \$#{return_sv}# = \$sth->execute(#{serialized_e}#, #{serialized_e}#) or
       die "TODO: Execute (\$#{class_sv}#/replace) failed";
   }
 __END__
@@ -204,8 +204,10 @@ our %CodePatterns =
               my $sql_table = $trait_obj->GetSqlVar('table');
               my @sql_cols = @{$trait_obj->GetSqlVar('columns')};
               my @qms = ('?') x scalar(@sql_cols);
+              my @xs = map { "$_ = ?" } @sql_cols;
               $sql_replace_e =
-                  "REPLACE INTO $sql_table (@sql_cols) VALUES (@qms)";
+                  "INSERT INTO $sql_table (@sql_cols) VALUES (@qms) " .
+                  "ON DUPLICATE KEY UPDATE @xs";
             }
 
             $cg->CreateScalarVar('return');
