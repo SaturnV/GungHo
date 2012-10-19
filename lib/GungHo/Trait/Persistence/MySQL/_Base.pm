@@ -14,7 +14,7 @@ use warnings;
 use feature ':5.10';
 
 use GungHo::SQL::Query;
-use GungHo::SQL::Utils qw( get_col_for_attr );
+use GungHo::SQL::Utils qw( get_col_for_attr build_where_clause );
 use GungHo::Utils qw( make_hashref );
 
 ###### METHODS ################################################################
@@ -75,52 +75,11 @@ sub _sql_builder_param
 
   my $meta_class = $class->get_meta_class() or
     die 'TODO';
-  if (my $attr = $meta_class->GetAttributeByName($n))
+  if ($meta_class->GetAttributeByName($n))
   {
-    my $col = get_col_for_attr($table_info, $n, $table_alias);
-
-    if (!ref($v))
-    {
-      $sql->AddWhere("$col = ?", $v);
-    }
-    elsif (ref($v) eq 'ARRAY')
-    {
-      die "TODO: No values in array" unless @{$v};
-      if ($#{$v})
-      {
-        my $qs = join(', ', ('?') x scalar(@{$v}));
-        $sql->AddWhere("$col IN ($qs)", @{$v});
-      }
-      else
-      {
-        $sql->AddWhere("$col = ?", $v->[0]);
-      }
-    }
-    elsif (ref($v) eq 'HASH')
-    {
-      my $vv;
-      foreach (keys(%{$v}))
-      {
-        if (Scalar::Util::blessed($vv = $v->{$_}) &&
-            $vv->isa('GungHo::SQL::Query::Literal'))
-        {
-          $sql->AddWhere("$col $_ " . $vv->Sql(), $vv->SqlParameters());
-        }
-        else
-        {
-          $sql->AddWhere("$col $_ ?", $vv);
-        }
-      }
-    }
-    elsif ($v->isa('GungHo::SQL::Query::Literal'))
-    {
-      $sql->AddWhere("$col = " . $v->Sql(), $v->SqlParameters());
-    }
-    else
-    {
-      die 'TODO';
-    }
-
+    my @where = build_where_clause(
+        get_col_for_attr($table_info, $n, $table_alias), $v);
+    $sql->AddWhere(@where) if @where;
     $ret = 1;
   }
 

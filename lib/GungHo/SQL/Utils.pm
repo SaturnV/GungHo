@@ -16,7 +16,9 @@ use GungHo::SQL::Query::Literal;
 
 ###### EXPORTS ################################################################
 
-our @EXPORT_OK = qw( get_col_for_attr $SQL_NULL $SQL_NOT_NULL );
+our @EXPORT_OK = qw(
+    $SQL_NULL $SQL_NOT_NULL
+    get_col_for_attr build_where_clause );
 
 ###### VARS ###################################################################
 
@@ -34,6 +36,68 @@ sub get_col_for_attr
       $attr_name;
   $col = "$table_alias.$col" if defined($table_alias);
   return $col;
+}
+
+sub build_where_clause
+{
+  my ($col, $v) = @_;
+  my ($where, @where_params);
+
+  if (!ref($v))
+  {
+    $where = "$col = ?";
+    @where_params = ($v);
+  }
+  elsif (ref($v) eq 'ARRAY')
+  {
+    die "TODO: No values in array" unless @{$v};
+    if ($#{$v})
+    {
+      my $qs = join(', ', ('?') x scalar(@{$v}));
+      $where = "$col IN ($qs)";
+    }
+    else
+    {
+      $where = "$col = ?";
+    }
+    @where_params = @{$v};
+  }
+  elsif (ref($v) eq 'HASH')
+  {
+    my @where;
+    my $vv;
+    foreach (keys(%{$v}))
+    {
+      if (Scalar::Util::blessed($vv = $v->{$_}) &&
+          $vv->isa('GungHo::SQL::Query::Literal'))
+      {
+        push(@where, "$col $_ " . $vv->Sql());
+        push(@where_params, $vv->SqlParameters());
+      }
+      else
+      {
+        push(@where, "$col $_ ?");
+        push(@where_params, $vv);
+      }
+    }
+
+    $where = $#where ?
+        join(' AND ', map { "($_)" } @where) :
+        $where[0]
+      if @where;
+  }
+  elsif ($v->isa('GungHo::SQL::Query::Literal'))
+  {
+    $where = "$col = " . $v->Sql();
+    @where_params = $v->SqlParameters();
+  }
+  else
+  {
+    die 'TODO';
+  }
+
+  return () unless defined($where);
+  return ($where, @where_params);
 }
 
 ###### THE END ################################################################
