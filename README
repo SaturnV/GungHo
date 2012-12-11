@@ -1,1 +1,4 @@
-Nothing to see here (yet), move along.
+GungHo :-
+    Perl,
+    Data driven class building with introspection and metaprogramming,
+    Object-Relational mapping (for MySQL only, very limited as of now).
