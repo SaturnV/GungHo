@@ -22,7 +22,7 @@ sub class_name_to_path
 sub add_route
 {
   my $uri_base = shift;
-  say "$_->[0] $uri_base/$_->[1] => $_->[2]"
+  say "$_->[0] $uri_base$_->[1] => $_->[2]"
     foreach (@_);
 }
 
@@ -91,7 +91,6 @@ sub build_routes
   foreach my $meta_class (@api_classes)
   {
     my $class_name = $meta_class->Name();
-    # TODO: endpoint naming on !models
     my $path = class_name_to_path($class_name);
     my $path_id = "$path/:id";
 
@@ -106,3 +105,5 @@ sub build_routes
     add_related_routes($uri_base, $path, $meta_class);
   }
 }
+
+build_routes();
