@@ -53,7 +53,7 @@ sub _map_to_attr_filter
   die "TODO: Bad filter value for '$n'"
     unless (($op, $arg) = ($v =~ /^([^:]+):(.*)\z/s));
   die "TODO: Bad operator '$op'"
-    unless ($op_ = $class->_map_to_filer_op($op));
+    unless ($op_ = $class->_map_to_filter_op($op));
 
   return ($n => { $op_ => $arg });
 }
