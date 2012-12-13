@@ -278,7 +278,7 @@ sub api_add_replace_rel
     $r = $obj->SaveRelationships(
         $params->{'user'},
         { $rel_name => { 'mode' => $mode, 'objs' => $data_list } })
-      if @{$data_list};
+      if (@{$data_list} || ($mode eq 'replace'));
     if ($r)
     {
       my @r =
