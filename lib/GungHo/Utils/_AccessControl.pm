@@ -136,27 +136,32 @@ sub _load_sql_builder_param
     {
       # TODO deleted?
 
-      my (@x_sqls, @x_params);
-      my ($x_class, $x_attr, $my_attr, $sub_sql, @sub_params);
+      my ($x_class, $x_attr, $my_attr, $sub_sql, @sub_params, @filters);
       foreach my $x_class_info (@{$x_classes})
       {
         # TODO attr->col mapping
+        $my_attr = $x_class_info->{'my_attr'};
         $x_class = $x_class_info->{'x_class'};
         $x_attr = $x_class_info->{'x_attr'};
-        $my_attr = $x_class_info->{'my_attr'};
 
+        # TODO GetId, user_id
+        @filters = $x_class_info->{'x_filter'} ?
+            ( %{$x_class_info->{'x_filter'}} ) :
+            ();
         (undef, $sub_sql) = $x_class->load_sql(
             $x_attr =>
                 GungHo::SQL::Query->literal("$table_alias.$my_attr"),
-            'user_id' => $user->GetId());
+            'user_id' => $user->GetId(),
+            @filters);
         ($sub_sql, @sub_params) = $sub_sql->Build();
-        push(@x_sqls, $sub_sql);
-        push(@x_params, @sub_params);
-      }
+        $select->AddWhere("EXISTS ($sub_sql)", @sub_params);
 
-      $select->AddWhere(
-          join(' OR ', map { "EXISTS ($_)" } @x_sqls),
-          @x_params);
+        # TODO Should be _load_sql_builder_param loop instead?
+        $class->_sql_builder(
+            $select, $table_alias, $class_db_descr, $dumpster,
+            $x_class_info->{'my_filter'})
+          if $x_class_info->{'my_filter'};
+      }
     }
   }
   else
