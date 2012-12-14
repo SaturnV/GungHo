@@ -67,22 +67,27 @@ sub _check_object_access
 
   if (($mode ne 'c') && $x_classes && @_)
   {
-    # TODO deleted?
+    # TODO my_filter
     my @ids = map { ref($_) ? $_->GetId() : $_ } @_;
 
     my %allowed;
-    my ($x_class, $x_attr, $x_getter);
+    my ($x_class, $x_attr, $x_getter, @filters);
     foreach my $x_class_info (@{$x_classes})
     {
       $x_class = $x_class_info->{'x_class'};
       $x_attr = $x_class_info->{'x_attr'};
       $x_getter = $x_class_info->{'x_getter'};
 
+      @filters = $x_class_info->{'x_filter'} ?
+            ( %{$x_class_info->{'x_filter'}} ) :
+            ();
+
       # TODO GetId, user_id
       $allowed{$_->$x_getter()} = 1
         foreach ($x_class->load(
                      'user_id' => $user->GetId(),
-                     $x_attr => \@ids));
+                     $x_attr => \@ids,
+                     @filters));
     }
 
     $allowed{$_} or die "TODO" foreach (@ids);
