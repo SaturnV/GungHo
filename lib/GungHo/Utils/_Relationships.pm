@@ -25,28 +25,28 @@ my %reltype =
 
 ##### SUBS ####################################################################
 
+sub _sclone_list { return $_[0] ? [@{$_[0]}] : undef }
+
 # ---- get_rel_info -----------------------------------------------------------
 
-sub get_rel_info
+sub _get_rel_info_simple
 {
-  my ($class, $rel_name) = @_;
+  my ($class, $rel_name, $related, $meta_class, $attr) = @_;
 
-  my %r = (
-    'obj_class_name' => $class,
-    'obj_meta_class' => $class->get_meta_class(),
-    'rel_name'       => $rel_name
-  );
+  my %r =
+      (
+        'name'           => $rel_name,
+        'type'           => $attr->GetProperty('relationship'),
+        'obj_class_name' => $class,
+        'obj_meta_class' => $meta_class,
+      );
 
-  my $attr = $r{'obj_meta_class'}->GetAttributeByName($rel_name);
-
-  $r{'type'} = $attr->GetProperty('relationship');
-
-  ($r{'obj_relid_name'}, $r{'rel_class_name'}, $r{'rel_relid_name'}) =
-      $attr->GetProperty('related') =~ /^(\w+)\s+=>\s+([^.]+)\.(\w+)\z/ or
+  @r{'obj_relid_name', 'rel_class_name', 'rel_relid_name'} =
+      $related =~ /^(\w+)\s+=>\s+([^.]+)\.(\w+)\z/ or
     die "TODO Can't parse relationship for $class.$rel_name";
 
   $r{'rel_meta_class'} = $r{'rel_class_name'}->get_meta_class() or
-    die "TODO: Can't find metadata for related " . $r{'rel_class_name'};
+    die "TODO: Can't find metadata for related $r{'rel_class_name'}";
 
   foreach my $type ('obj', 'rel')
   {
@@ -56,20 +56,341 @@ sub get_rel_info
       die "TODO: Can't find $type relid attribute";
     $r{"${type}_table_info"} = $r{"${type}_class_name"}->get_sql_table_info();
 
-    foreach my $method ('get', 'set')
+    foreach ('get', 'set')
     {
-      $r{"${type}_relid_${method}"} =
-          $r{"${type}_relid_attr"}->GetMethodName($method) //
-          sub { die "TODO: No ${method}er for $type relid attribute" };
+      $r{"${type}_relid_$_"} =
+          $r{"${type}_relid_attr"}->GetMethodName($_) //
+          sub { die "TODO: No $_ method for $type relid attribute " .
+                    "in $class.$rel_name" };
     }
   }
 
   $r{'access_control'} = $attr->HasFlag('propagate_access') ? 'obj' : 'rel';
 
+  foreach (qw( get set ))
+  {
+    $r{$_} = $attr->GetMethodName($_) //
+        sub { die "TODO: No $_ method for relationship $class.$rel_name" };
+  }
+
+  my $t;
+  foreach (qw( load save ))
+  {
+    $r{"rel_$_"} = $t if defined($t = $attr->GetProperty($_));
+  }
+
   return \%r;
 }
 
+sub _merge_relationships
+{
+  my ($obj_x, $x_rel) = @_;
+  my $ret = { 'obj_x_relinfo' => $obj_x, 'x_rel_relinfo' => $x_rel };
+
+  my $rel = $obj_x->{'name'};
+  my $class = $obj_x->{'obj_class_name'};
+  die "TODO Something is not good around $class.$rel (type)"
+    unless (($obj_x->{'type'} ~~ 'many_to_many') &&
+            ($x_rel->{'type'} ~~ 'belongs_to'));
+
+  my $new_key;
+  foreach my $orig_key (keys(%{$obj_x}))
+  {
+    $new_key = $orig_key;
+    $new_key =~ s/^obj_relid/obj_xobjid/ ||
+        $new_key =~ s/^rel_relid/x_xobjid/ || 
+        $new_key =~ s/^rel_/x_/;
+    $ret->{$new_key} = $obj_x->{$orig_key};
+  }
+
+  foreach my $orig_key (keys(%{$x_rel}))
+  {
+    next if ($orig_key ~~ [qw( obj_table_info )]);
+
+    $new_key = $orig_key;
+    $new_key =~ s/^obj_relid/x_xrelid/ ||
+        $new_key =~ s/^rel_relid/rel_xrelid/ ||
+        $new_key =~ s/^obj_/x_/ ||
+        $new_key =~ s/^/xr_/;
+
+    if (defined($ret->{$new_key}))
+    {
+      die "TODO Something is not good around $class.$rel ($orig_key/$new_key)"
+        if ($ret->{$new_key} ne $x_rel->{$orig_key});
+    }
+    else
+    {
+      $ret->{$new_key} = $x_rel->{$orig_key};
+    }
+  }
+
+  return $ret;
+}
+
+sub get_rel_info
+{
+  my ($class, $rel_name) = @_;
+  my $ret;
+
+  my $meta_class = $class->get_meta_class();
+  my $attr = $meta_class->GetAttributeByName($rel_name);
+  my $related = $attr->GetProperty('related');
+  if ($related =~ s/\s*>>\s*(\w+)\z//)
+  {
+    my $final_rel = $1;
+    my $rel_obj = $class->_get_rel_info_simple(
+        $rel_name, $related, $meta_class, $attr);
+    my $rel_rel = $rel_obj->{'rel_class_name'}->get_rel_info($final_rel);
+    $ret = _merge_relationships($rel_obj, $rel_rel);
+  }
+  else
+  {
+    $ret = $class->_get_rel_info_simple(
+        $rel_name, $related, $meta_class, $attr);
+  }
+
+  return $ret;
+}
+
 # ---- load_relationships -----------------------------------------------------
+
+sub _relationships_to_load
+{
+  my ($class, $load_relationships_spec) = @_;
+  my %relationships_to_load;
+
+  my $meta_class = $class->get_meta_class() or
+    die "TODO: Can't find metadata for '$class'";
+
+  my ($rel_name, $relationship, $rel);
+  foreach my $rel_attr
+      ($meta_class->GetAttributesWithFlag('relationship'))
+  {
+    $rel_name = $rel_attr->Name();
+    $relationship = $rel_attr->GetProperty('relationship') or
+      die "TODO: $class.$rel_name is not a relationship.";
+
+    $rel = $load_relationships_spec->{$rel_name} ||
+        $load_relationships_spec->{$reltype{$relationship} || ':others'} ||
+        $load_relationships_spec->{'*'};
+    if ($rel)
+    {
+      $rel = { 'return' => $rel } unless ref($rel);
+      $relationships_to_load{$rel_name} = $rel
+        if (($rel->{'return'} // 'none') ne 'none');
+    }
+  }
+
+  return \%relationships_to_load;
+}
+
+sub _loadrel_output_mapper
+{
+  # my ($class, $ri, $load_spec, $ac) = @_;
+  my $map_out;
+
+  my $output = $_[2]->{'return'};
+  if ($output eq 'id')
+  {
+    $map_out = sub { return $_[0]->GetId() };
+  }
+  elsif ($output eq 'full')
+  {
+    my $ac_user = $_[3]->{'user'};
+    $map_out = sub { return $_[0]->ExportJsonObject($ac_user) };
+  }
+  elsif ($output eq 'raw')
+  {
+    # nop
+  }
+  else
+  {
+    die "TODO Unknown output transformation '$output'";
+  }
+
+  return $map_out;
+}
+
+sub _loadrel_load_rels
+{
+  my ($class, $ri, $load_spec, $ac, $rel_ids) = @_;
+
+  my @filters = ( $ri->{'rel_relid_name'} => $rel_ids );
+  push(@filters, ':access' => $ac)
+    if ($ri->{'access_control'} eq 'rel');
+  push(@filters, @{$load_spec->{'filter'}})
+    if $load_spec->{'filter'};
+
+  return $ri->{'rel_class_name'}->load(@filters);
+}
+
+# Technically this implements may_belong_to
+sub _load_relationship_belongs_to
+{
+  my $class = shift;
+  my $ri = shift;
+  my $load_spec = shift;
+  my $ac = shift;
+
+  my $set = $ri->{'set'};
+  my $obj_relid_get = $ri->{'obj_relid_get'};
+
+  if (($load_spec->{'return'} eq 'id') && !$load_spec->{'filter'} &&
+      ($ri->{'access_control'} eq 'obj'))
+  {
+    $_->$set($_->$obj_relid_get()) foreach (@_);
+  }
+  else
+  {
+    my $relid;
+
+    my %relids;
+    foreach (@_)
+    {
+      $relids{$relid} = 1
+        if defined($relid = $_->$obj_relid_get());
+    }
+
+    my %rels;
+    if (%relids)
+    {
+      my $rel_relid_get = $ri->{'rel_relid_get'};
+      my $map_out = $class->_loadrel_output_mapper($ri, $load_spec, $ac);
+      my @rels = $class->_loadrel_load_rels(
+          $ri, $load_spec, $ac, [keys(%relids)]);
+      %rels = $map_out ?
+          map { ( $_->$rel_relid_get() => $map_out->($_) ) } @rels :
+          map { ( $_->$rel_relid_get() => $_ ) } @rels;
+    }
+
+    foreach (@_)
+    {
+      $_->$set($rels{$relid})
+        if defined($relid = $_->$obj_relid_get());
+    }
+  }
+
+  return @_;
+}
+
+# TODO More efficient id only loading
+sub _load_relationship_has_many
+{
+  my $class = shift;
+  my $ri = shift;
+  my $load_spec = shift;
+  my $ac = shift;
+
+  my $set = $ri->{'set'};
+  my $obj_relid_get = $ri->{'obj_relid_get'};
+  my $rel_relid_get = $ri->{'rel_relid_get'};
+  my $relid;
+
+  my %rels;
+  foreach (@_)
+  {
+    $rels{$relid} = []
+      if defined($relid = $_->$obj_relid_get());
+  }
+
+  if (%rels)
+  {
+    my @rels = $class->_loadrel_load_rels(
+        $ri, $load_spec, $ac, [keys(%rels)]);
+    my $map_out = $class->_loadrel_output_mapper($ri, $load_spec, $ac);
+    if ($map_out)
+    {
+      push(@{$rels{$_->$rel_relid_get()}}, $map_out->($_))
+        foreach (@rels);
+    }
+    else
+    {
+      push(@{$rels{$_->$rel_relid_get()}}, $_)
+        foreach (@rels);
+    }
+  }
+
+  foreach (@_)
+  {
+    $_->$set(_sclone_list($rels{$relid}))
+      if defined($relid = $_->$obj_relid_get());
+  }
+
+  return @_;
+}
+
+sub _load_relationship_many_to_many
+{
+  my $class = shift;
+  my $ri = shift;
+  my $load_spec = shift;
+  my $ac = shift;
+
+  my $set = $ri->{'set'};
+  my $obj_xobjid_get = $ri->{'obj_xobjid_get'};
+  my $relid;
+
+  my %rels;
+  foreach (@_)
+  {
+    $rels{$relid} = []
+      if defined($relid = $_->$obj_xobjid_get());
+  }
+
+  if (%rels)
+  {
+    my $x_spec = {};
+    $x_spec->{'filter'} = $load_spec->{'x_filter'}
+      if $load_spec->{'x_filter'};
+    my @xs = $class->_loadrel_load_rels(
+        $ri->{'obj_x_relinfo'}, $x_spec, $ac, [keys(%rels)]);
+    @xs = $ri->{'x_class_name'}->_load_relationship(
+        $ri->{'x_rel_relinfo'}, $load_spec, $ac, @xs);
+
+    my $t;
+    my $x_xobjid_get = $ri->{'x_xobjid_get'};
+    my $x_get = $ri->{'x_rel_relinfo'}->{'get'};
+    foreach (@xs)
+    {
+      push(@{$rels{$_->$x_xobjid_get()}}, $t)
+        if ($t = $_->$x_get());
+    }
+  }
+
+  foreach (@_)
+  {
+    $_->$set(_sclone_list($rels{$relid}))
+      if defined($relid = $_->$obj_xobjid_get());
+  }
+
+  return @_;
+}
+
+sub _load_relationship
+{
+  my $class = shift;
+  my $rel_name = shift;
+  # my $load_spec = shift;
+  # my $ac = shift;
+
+  my $ri;
+  if (ref($rel_name))
+  {
+    $ri = $rel_name;
+    $rel_name = $ri->{'name'};
+  }
+  else
+  {
+    $ri = $class->get_rel_info($rel_name);
+  }
+
+  my $method = $ri->{'rel_load'} ||
+      $class->can("_load_relationship_$ri->{'type'}") or
+    die "TODO $class can't load $ri->{'type'} relationship ($rel_name)";
+
+  # return $class->$method($ri, $load_spec, $ac, @_);
+  return $class->$method($ri, @_);
+}
 
 # Access control:
 #   base object(s) should be checked beforehand
@@ -81,141 +402,16 @@ sub load_relationships
   my $class = shift;
   my $ac = shift;
   my $rels = shift;
-  my @objs = @_;
+  # my @objs = @_;
 
-  if ($rels && %{$rels} && @objs)
+  if ($rels && %{$rels} && @_)
   {
-    my $meta_class = $class->get_meta_class() or
-      die "TODO: Can't find metadata for '$class'";
+    my $load_rels = $class->_relationships_to_load($rels);
+    $class->_load_relationship($_, $load_rels->{$_}, $ac, @_)
+      foreach (keys(%{$load_rels}));
+  }
 
-    foreach my $obj_rel_attr
-        ($meta_class->GetAttributesWithFlag('relationship'))
-    {
-      my $obj_rel_name = $obj_rel_attr->Name();
-
-      # TODO better get_rel_info integration
-      my $ri = $class->get_rel_info($obj_rel_name);
-      my ($obj_relid_get, $rel_relid_get,
-          $rel_class_name, $rel_relid_name) =
-         ($ri->{'obj_relid_get'}, $ri->{'rel_relid_get'},
-          $ri->{'rel_class_name'}, $ri->{'rel_relid_name'});
-
-      my $relationship = $obj_rel_attr->GetProperty('relationship') or
-        die 'TODO: Not a relationship.';
-
-      my $rel_info;
-      my $rel = $rels->{$obj_rel_name} ||
-          $rels->{$reltype{$relationship} || ':others'} ||
-          $rels->{'*'};
-      if (ref($rel))
-      {
-        $rel_info = $rel;
-        $rel = $rel_info->{'return'};
-      }
-      next if (!$rel || ($rel eq 'none'));
-
-      my $obj_rel_set = $obj_rel_attr->GetMethodName('set') or
-        die 'TODO: No setter for relationship';
-
-      my $related_objs = {};
-      {
-        my $relid;
-        foreach (@objs)
-        {
-          $related_objs->{$relid} = []
-            if defined($relid = $_->$obj_relid_get());
-        }
-      }
-
-      if (my $load = $obj_rel_attr->GetProperty('load'))
-      {
-        # TODO: Better parameters incl. AC stuff
-        $related_objs = $load->(
-            'class' => $rel_class_name,
-            'attr' => $rel_relid_name,
-            'attr_getter' => $rel_relid_get,
-            'values' => [keys(%{$related_objs})],
-            'args' => ($rel_info ? $rel_info->{'args'} : undef)) || {};
-      }
-      else
-      {
-        my @related_objs;
-        {
-          my @load_filters;
-          push(@load_filters,
-              $rel_class_name->map_to_filters($rel_info->{'args'}))
-            if ($rel_info && $rel_info->{'args'});
-          push(@load_filters, ':access' => $ac)
-            if (($ri->{'type'} ne 'belongs_to') &&
-                ($ri->{'access_control'} ~~ 'rel'));
-          @related_objs = $rel_class_name->load(
-              $rel_relid_name => [keys(%{$related_objs})],
-              @load_filters)
-            if %{$related_objs};
-        }
-
-        if (my $load_map = $obj_rel_attr->GetProperty('load_map'))
-        {
-          my @mapped_objs = $load_map->(@related_objs);
-          foreach my $i (0 .. $#related_objs)
-          {
-            push(@{$related_objs->{$related_objs[$i]->$rel_relid_get()}},
-                $mapped_objs[$i])
-              if $mapped_objs[$i];
-          }
-        }
-        else
-        {
-          push(@{$related_objs->{$_->$rel_relid_get()}}, $_)
-            foreach (@related_objs);
-        }
-      }
-
-      if ($rel ne 'raw')
-      {
-        my $ac_user = $ac->{'user'};
-        my $exporter = ($rel eq 'id') ? 'GetId' : 'ExportJsonObject';
-        $related_objs->{$_} =
-            [ map { $_->$exporter($ac_user) } @{$related_objs->{$_}} ]
-          foreach (keys(%{$related_objs}));
-      }
-
-      given ($relationship)
-      {
-        when ('has_many')
-        {
-          my $relid;
-          foreach (@objs)
-          {
-            $_->$obj_rel_set([@{$related_objs->{$relid}}])
-              if (defined($relid = $_->$obj_relid_get()) &&
-                  $related_objs->{$relid} &&
-                  @{$related_objs->{$relid}});
-          }
-        }
-        when ('belongs_to')
-        {
-          my $relid;
-          foreach (@objs)
-          {
-            die "TODO: Belongs to none"
-              if (!defined($relid = $_->$obj_relid_get()) ||
-                  !$related_objs->{$relid} ||
-                  !@{$related_objs->{$relid}});
-            die "TODO: Belongs to many"
-              if $#{$related_objs->{$relid}};
-            $_->$obj_rel_set($related_objs->{$relid}->[0]);
-          }
-        }
-        default
-        {
-          die "TODO: Unknown relationship";
-        }
-      } # given ($relationship)
-    } # foreach my $obj_rel_attr (...)
-  } # if ($rels && %{$rels} && @objs)
-
-  return @objs;
+  return @_;
 }
 
 # ---- SaveRelationships ------------------------------------------------------
