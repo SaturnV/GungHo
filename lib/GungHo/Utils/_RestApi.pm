@@ -204,7 +204,7 @@ sub api_list_rel
   my $user = $params->{'user'};
 
   my $ri = $class->get_rel_info($rel_name);
-  my $obj = $class->load_relationship(
+  my ($obj) = $class->load_relationship(
       $ri,
       { ':access' => { 'user' => $user, 'mode' => 'r' } },
       ($id_or_json eq 'json') ? 'raw' : 'id',
@@ -216,7 +216,7 @@ sub api_list_rel
   my $rels = $obj->$get();
   if ($rels && ($id_or_json eq 'json'))
   {
-    my $rel_class = $ri->{'rel_class'};
+    my $rel_class = $ri->{'rel_class_name'};
     $rels = [map { $_->ExportJsonObject($user) }
         $rel_class->load_relationships(
             $params->{'rel'},
@@ -364,15 +364,19 @@ sub _duplicate
     {
       $attr_name = $attr->Name();
       $dup_type = $attr->GetProperty('duplicate');
-      if ($dup_type ne 'recursive')
-      {
-        $rels->{$attr_name} = $dup_type;
-        push(@clear_ids, $attr_name) if ($dup_type eq 'full');
-      }
-      else
+      if ($dup_type eq 'recursive')
       {
         $rels->{$attr_name} = 'raw';
         push(@recursive, $attr_name);
+      }
+      elsif ($dup_type eq 'full')
+      {
+        $rels->{$attr_name} = 'json';
+        push(@clear_ids, $attr_name);
+      }
+      else
+      {
+        $rels->{$attr_name} = $dup_type;
       }
     }
     @objs = $class->load_relationships(
@@ -477,16 +481,16 @@ sub create_objs_tweaked
 sub _saverel_create
 {
   my ($rel_class, $obj, $save_info, $save_rels) = @_;
-  my $u = $save_info->{'ac_user'} // '+';
+  my $u = $save_info->{':access'}->{'user'} // '+';
   return map { $rel_class->api_create_({ 'user' => $u }, $_) } @{$save_rels};
 }
 
 sub _SaveHasMany_remove
 {
   my ($obj, $save_info, $save_rels) = @_;
-  my $u = $save_info->{'ac_user'} // '+';
+  my $u = $save_info->{':access'}->{'user'} // '+';
   my $ri = $save_info->{'rel_info'};
-  my $rel_class = $ri->{'rel_class'};
+  my $rel_class = $ri->{'rel_class_name'};
   $rel_class->api_delete({ 'user' => $u }, ref($_) ? $_->GetId() : $_)
     foreach (@{$save_rels});
 }

@@ -799,6 +799,7 @@ sub _saverel_x
   else
   {
     my $x_xobjid_name = $ri->{'x_xobjid_name'};
+    my $x_xrelid_get = $ri->{'x_xrelid_get'};
     my $obj_xobjid_get = $ri->{'obj_xobjid_get'};
     my $obj_xobjid = $save_obj->$obj_xobjid_get();
 
@@ -807,7 +808,7 @@ sub _saverel_x
     # TODO This may lead to some leak by not dying on nop
     my %old_xrelids;
     %old_xrelids =
-        map { ($_->x_xrelid_get() => $_->GetId()) }
+        map { ($_->$x_xrelid_get() => $_->GetId()) }
             $x_class->load($x_xobjid_name => $obj_xobjid)
       if (($mode eq 'replace') || @arg_rel_ids);
 
