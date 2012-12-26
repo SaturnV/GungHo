@@ -207,7 +207,11 @@ sub api_list_rel
   my ($obj) = $class->load_relationship(
       $ri,
       { ':access' => { 'user' => $user, 'mode' => 'r' } },
-      ($id_or_json eq 'json') ? 'raw' : 'id',
+      {
+        'return' => ($id_or_json eq 'json') ? 'raw' : 'id',
+        'filter' =>
+            [$ri->{'rel_class_name'}->map_to_filters($params->{'args'})]
+      },
       scalar($class->load(
           ':access' => { 'user' => $user, 'mode' => 'r' },
           'id' => $id)));
