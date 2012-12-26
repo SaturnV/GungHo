@@ -35,7 +35,7 @@ sub _dri
   my $x = {};
   foreach (keys(%{$_[0]}))
   {
-    $x->{$_} = /relinfo/ ? _dri($_[0]->{$_}) : $_[0]->{$_}
+    $x->{$_} = /rel(?:_?)info/ ? _dri($_[0]->{$_}) : $_[0]->{$_}
       unless (/meta/ || /attr/);
   }
   return $x;
@@ -552,6 +552,8 @@ sub _SaveRelationship_belongs_to
       my $obj_relid_set = $ri->{'obj_relid_set'};
       $obj->$obj_relid_set($new);
     }
+
+    $save_info->{'ret'}->{$rel_name} = [ $new ];
   }
 
   return 1;
@@ -651,12 +653,12 @@ sub _SaveRelationship_has_many
     foreach (@{$save_rels});
 
   my $ri = $save_info->{'rel_info'};
+  my $rel_name = $ri->{'name'};
   if ($mode eq 'remove')
   {
     if (@create_rel_objs)
     {
       my $class = ref($obj);
-      my $rel_name = $ri->{'name'};
       die "TODO Object create in remove in $class.$rel_name";
     }
 
@@ -703,8 +705,15 @@ sub _SaveRelationship_has_many
         $save_info, [@new_rels_by_id{@update_ids}])
       if @update_ids;
 
-    $obj->_SaveHasMany_create($save_info, \@create_rel_objs)
-      if @create_rel_objs;
+    if (@create_rel_objs)
+    {
+      $new_rels_by_id{$_->GetId()} = $_
+        foreach ($obj->_SaveHasMany_create($save_info, \@create_rel_objs));
+    }
+
+    $save_info->{'ret'}->{$rel_name} = @arg_rel_ids ?
+        [ keys(%new_rels_by_id) ] :
+        [ values(%new_rels_by_id) ];
   }
 
   return 1;
@@ -812,27 +821,33 @@ sub _saverel_x
             $x_class->load($x_xobjid_name => $obj_xobjid)
       if (($mode eq 'replace') || @arg_rel_ids);
 
-    push(@arg_rel_ids,
-        map { $_->$rel_xrelid_get() }
-            $x_class->_saverel_x_create(
-                $save_obj, $save_info, \@create_rel_objs))
-      if @create_rel_objs;
-
-    my %new_xrelids = map { ($_ => 1) } @arg_rel_ids;
+    my %new_rels_by_xrelid = map { ($_ => $_) } @arg_rel_ids;
+    if (@create_rel_objs)
+    {
+      $new_rels_by_xrelid{$_->$rel_xrelid_get()} = $_
+        foreach ($x_class->_saverel_x_create(
+                     $save_obj, $save_info, \@create_rel_objs));
+    }
 
     if ($mode eq 'replace')
     {
-      my @remove_xrelids = grep { !$new_xrelids{$_} } keys(%old_xrelids);
+      my @remove_xrelids =
+          grep { !exists($new_rels_by_xrelid{$_}) } keys(%old_xrelids);
       # \@hash{@keys} === map { \$hash{$_} } @keys
       $x_class->_saverel_x_removerel(
           $save_obj, $save_info, [@old_xrelids{@remove_xrelids}])
         if @remove_xrelids;
     }
 
-    my @new_xrelids = grep { !$old_xrelids{$_} } keys(%new_xrelids);
+    my @new_xrelids =
+        grep { !exists($old_xrelids{$_}) } keys(%new_rels_by_xrelid);
     $x_class->_saverel_x_newrel(
         $save_obj, $save_info, \@new_xrelids)
       if @new_xrelids;
+
+    $save_info->{'ret'}->{$rel_name} = @arg_rel_ids ?
+       [ keys(%new_rels_by_xrelid) ] :
+       [ values(%new_rels_by_xrelid) ];
   }
 
   return 1;
