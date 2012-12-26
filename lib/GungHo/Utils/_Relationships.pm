@@ -79,19 +79,19 @@ sub _get_rel_info_simple
     $r{"${type}_table_info"} = $t->get_sql_table_info()
       if $t->can('get_sql_table_info');
 
-    foreach ('get', 'set')
+    foreach my $m ('get', 'set')
     {
-      $r{"${type}_relid_$_"} =
-          $r{"${type}_relid_attr"}->GetMethodName($_) //
-          sub { die "TODO: No $_ method for $type relid attribute " .
+      $r{"${type}_relid_$m"} =
+          $r{"${type}_relid_attr"}->GetMethodName($m) //
+          sub { die "TODO: No $m method for $type relid attribute " .
                     "in $class.$rel_name" };
     }
   }
 
-  foreach (qw( get set ))
+  foreach my $m (qw( get set ))
   {
-    $r{$_} = $attr->GetMethodName($_) //
-        sub { die "TODO: No $_ method for relationship $class.$rel_name" };
+    $r{$m} = $attr->GetMethodName($m) //
+        sub { die "TODO: No $m method for relationship $class.$rel_name" };
   }
 
   foreach (qw( load save ))
