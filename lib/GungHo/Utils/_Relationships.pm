@@ -211,6 +211,8 @@ sub _relationships_to_load
     {
       # load_relationship is going to sclone $rel
       $rel = { 'return' => $rel } unless ref($rel);
+      $rel->{'load_relationships'} //=
+          $load_relationships_spec->{"$rel_name:rel"};
       $relationships_to_load{$rel_name} = $rel
         if (($rel->{'return'} // 'none') ne 'none');
     }
@@ -254,6 +256,7 @@ sub _loadrel_output_mapper
 sub _loadrel_load_rels
 {
   my ($class, $load_spec, $rel_ids) = @_;
+  my @ret;
 
   my $ri = $load_spec->{'rel_info'};
   my @filters = ( $ri->{'rel_relid_name'} => $rel_ids );
@@ -265,7 +268,20 @@ sub _loadrel_load_rels
   push(@filters, @{$load_spec->{'filter'}})
     if $load_spec->{'filter'};
 
-  return $ri->{'rel_class_name'}->load(@filters);
+  @ret = $ri->{'rel_class_name'}->load(@filters);
+
+  if (@ret && $load_spec->{'load_relationships'})
+  {
+    my $rel_class = $ri->{'rel_class_name'};
+    my $common_key =
+        exists($load_spec->{'recursive_spec'}) ?
+            'recursive_spec' :
+            'common_spec';
+    @ret = $rel_class->load_relationships(
+        $load_spec->{'load_relationships'}, $load_spec->{$common_key}, @ret);
+  }
+
+  return @ret;
 }
 
 # ---- _load_relationship_belongs_to ------------------------------------------
@@ -420,7 +436,6 @@ sub _load_relationship
       $class->can("_load_relationship_$ri->{'type'}") or
     die "TODO $class can't load $ri->{'type'} relationship ($ri->{'name'})";
 
-  # return $class->$method($load_spec, $obj_objs);
   return $class->$method($load_spec, $obj_objs);
 }
 
@@ -448,6 +463,7 @@ sub load_relationship
   {
     $load_spec->{'return'} //= $spec2 // 'raw';
   }
+  $load_spec->{'common_spec'} //= $spec2 if $spec2;
 
   return $class->_load_relationship($load_spec, \@_);
 }
