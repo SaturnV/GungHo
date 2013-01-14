@@ -54,7 +54,7 @@ sub _check_class_access
   # my @x_classes = ...;
   # my $x_classes = @x_classes ? \@x_classes : undef;
   # return ($access_granted, $x_classes);
-  return (1);
+  return (undef);
 }
 
 sub _check_object_access
