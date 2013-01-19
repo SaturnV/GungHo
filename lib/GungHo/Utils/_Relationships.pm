@@ -20,8 +20,9 @@ use Scalar::Util qw( blessed );
 
 my %reltype =
     (
-      'has_many' => ':children',
-      'belongs_to' => ':parents'
+      'has_many' => [':children', ':all'],
+      'belongs_to' => [':parents'],
+      'many_to_many' => [':all']
     );
 
 ##### SUBS ####################################################################
@@ -204,9 +205,19 @@ sub _relationships_to_load
     $relationship = $rel_attr->GetProperty('relationship') or
       die "TODO: $class.$rel_name is not a relationship.";
 
-    $rel = $load_relationships_spec->{$rel_name} ||
-        $load_relationships_spec->{$reltype{$relationship} || ':others'} ||
-        $load_relationships_spec->{'*'};
+    $rel = $load_relationships_spec->{$rel_name};
+    if (!$rel)
+    {
+      if ($reltype{$relationship})
+      {
+        foreach (@{$reltype{$relationship}})
+        {
+          last if ($rel = $load_relationships_spec->{$_});
+        }
+      }
+      $rel //= $load_relationships_spec->{'*'};
+    }
+
     if ($rel)
     {
       # load_relationship is going to sclone $rel
