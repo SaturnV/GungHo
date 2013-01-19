@@ -255,11 +255,12 @@ sub _loadrel_output_mapper
 
 sub _loadrel_load_rels
 {
-  my ($class, $load_spec, $rel_ids) = @_;
+  my ($class, $load_spec, $rel_class, $rel_ids) = @_;
   my @ret;
 
   my $ri = $load_spec->{'rel_info'};
   my @filters = ( $ri->{'rel_relid_name'} => $rel_ids );
+  $rel_class //= $ri->{'rel_class_name'};
 
   push(@filters, ':access' => $load_spec->{':access'})
     if ($load_spec->{':access'} &&
@@ -268,11 +269,10 @@ sub _loadrel_load_rels
   push(@filters, @{$load_spec->{'filter'}})
     if $load_spec->{'filter'};
 
-  @ret = $ri->{'rel_class_name'}->load(@filters);
+  @ret = $rel_class->load(@filters);
 
   if (@ret && $load_spec->{'load_relationships'})
   {
-    my $rel_class = $ri->{'rel_class_name'};
     my $common_key =
         exists($load_spec->{'recursive_spec'}) ?
             'recursive_spec' :
@@ -316,7 +316,8 @@ sub _load_relationship_belongs_to
     {
       my $rel_relid_get = $ri->{'rel_relid_get'};
       my $map_out = $class->_loadrel_output_mapper($load_spec);
-      my @rels = $class->_loadrel_load_rels($load_spec, [keys(%relids)]);
+      my @rels = $class->_loadrel_load_rels(
+          $load_spec, undef, [keys(%relids)]);
       %rels = $map_out ?
           map { ( $_->$rel_relid_get() => $map_out->($_) ) } @rels :
           map { ( $_->$rel_relid_get() => $_ ) } @rels;
@@ -354,7 +355,7 @@ sub _load_relationship_has_many
 
   if (%rels)
   {
-    my @rels = $class->_loadrel_load_rels($load_spec, [keys(%rels)]);
+    my @rels = $class->_loadrel_load_rels($load_spec, undef, [keys(%rels)]);
     my $map_out = $class->_loadrel_output_mapper($load_spec);
     if ($map_out)
     {
@@ -400,7 +401,7 @@ sub _load_relationship_many_to_many
     my $x_spec = { 'return' => 'raw', 'rel_info' => $ri->{'obj_x_relinfo'} };
     $x_spec->{'filter'} = $load_spec->{'x_filter'}
       if $load_spec->{'x_filter'};
-    my @xs = $class->_loadrel_load_rels($x_spec, [keys(%rels)]);
+    my @xs = $class->_loadrel_load_rels($x_spec, undef, [keys(%rels)]);
 
     $x_spec = _sclone_hash($load_spec);
     $x_spec->{'rel_info'} = $ri->{'x_rel_relinfo'};
