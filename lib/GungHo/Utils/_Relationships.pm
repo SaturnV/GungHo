@@ -912,10 +912,9 @@ sub _saverel_x
           grep { !exists($new_rels_by_xrelid{$_}) } keys(%old_xrelids);
       if (@remove_xrelids)
       {
-        my $remove = [@old_xrelids{@remove_xrelids}];
-        # \@hash{@keys} === map { \$hash{$_} } @keys
-        $x_class->_saverel_x_removerel($save_obj, $save_info, $remove);
-        $chg->{'rel'}->{$_} = $_ foreach (@{$remove});
+        $x_class->_saverel_x_removerel(
+            $save_obj, $save_info, \@remove_xrelids);
+        $chg->{'rel'}->{$_} = $_ foreach (@remove_xrelids);
       }
     }
 
