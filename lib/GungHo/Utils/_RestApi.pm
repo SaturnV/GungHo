@@ -123,23 +123,25 @@ sub api_create
 #   read: n/a
 #   write: checked (die)
 #   create: n/a
-sub api_update
+sub ApiUpdate
 {
-  my ($class, $params, $id, $json) = @_;
-
-  my $obj = $class->load(
-      ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' },
-      'id' => $id);
+  my ($self, $params, $json) = @_;
 
   if (keys(%{$json}))
   {
-    die "id_mismatch\n"
-      if (defined($json->{'id'}) && ($json->{'id'} ne $id));
+    if (exists($json->{'id'}))
+    {
+      die "TODO: Can't delete id"
+        unless defined($json->{'id'});
+      die "TODO: Can't change id"
+        unless ($json->{'id'} eq $self->GetId());
+    }
 
-    my $meta_class = $class->get_meta_class() or
+    my $meta_class = $self->get_meta_class() or
       die "meta_class missing.\n";
-    my ($attr, $obj_rel_set);
+
     my %rels;
+    my ($attr, $obj_rel_set);
     foreach my $k (keys(%{$json}))
     {
       $attr = $meta_class->GetAttributeByName($k);
@@ -154,16 +156,28 @@ sub api_update
       {
         $obj_rel_set = $attr->GetMethodName('set');
         die "readonly_attr: '$k'.\n" unless $obj_rel_set;
-        $obj->$obj_rel_set($json->{$k});
+        $self->$obj_rel_set($json->{$k});
       }
     }
 
     %rels ?
         # TODO mode?
-        $obj->SaveRelationships(\%rels,
+        $self->SaveRelationships(\%rels,
             { ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' } }) :
-        $obj->Save();
+        $self->Save();
   }
+
+  return $self;
+}
+
+sub api_update
+{
+  my ($class, $params, $id, $json) = @_;
+
+  my $obj = $class->load(
+      ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' },
+      'id' => $id);
+  $obj = $obj->ApiUpdate($params, $json);
 
   return $obj->ExportJsonObject($params->{'user'});
 }
