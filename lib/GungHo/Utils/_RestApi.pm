@@ -426,24 +426,36 @@ sub _duplicate
   return @objs ? [ map { $_->ExportJsonObject($user) } @objs ] : undef;
 }
 
-sub api_duplicate
+sub api_duplicate_
 {
   my ($class, $params, $id, $post_json) = @_;
+  my $obj;
 
-  my $obj = $class->_duplicate(
+  my $copy = $class->_duplicate(
       $params->{'user'},
       $class->api_read_(
-          { 'user' => $params->{'user'} }, $id))->[0];
-  $class->tweak_duplicate_json($params->{'user'}, $obj);
-  warn "Duplicated object looks like this: " . Data::Dumper::Dumper($obj);
-  $obj = $class->api_create(
-      { 'user' => $params->{'user'} }, $obj);
+          { 'user' => $params->{'user'} },
+          $id))->[0];
+  $class->tweak_duplicate_json($params->{'user'}, $copy);
+  # warn "Duplicated object looks like this: " . Data::Dumper::Dumper($copy);
 
-  $obj = $class->api_update(
-      { 'user' => $params->{'user'} }, $obj->{'id'}, $post_json)
+  $obj = $class->api_create_(
+      { 'user' => $params->{'user'} },
+      $copy);
+  $obj->ApiUpdate(
+      { 'user' => $params->{'user'} },
+      $post_json)
     if ($post_json && %{$post_json});
 
   return $obj;
+}
+
+sub api_duplicate
+{
+  # my $class = shift;
+  # my $obj = $class->api_duplicate_(@_);
+  # return $obj->ExportJsonObject($_[0]->{'user'});
+  return shift->api_duplicate_(@_)->ExportJsonObject($_[0]->{'user'});
 }
 
 # ==== testing ================================================================
