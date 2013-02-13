@@ -41,6 +41,7 @@ sub _prepare_sql
 
   # TODO dbh
   my $dbh = $main::DBH;
+  warn "$class SQL $sql";
   if (!($sth = $dbh->prepare($sql)))
   {
     my $sql_name = $class->_sql_name($params);
@@ -57,6 +58,7 @@ sub _execute_nonselect_sth
   my $sth = shift;
   my $ret;
 
+  warn "$class SQL (non-select) PARAMS " . Data::Dumper::Dumper(\@_);
   if (!($ret = $sth->execute(@_)))
   {
     my $sql_name = $class->_sql_name($params);
@@ -219,6 +221,7 @@ sub _load_by_sql_instantiate
     if ($t = $params->{'&post_deserialize_map'});
 
   @ret = map { $class->_fast_new($_) } @ret;
+  warn "$class SQL OBJS " . Data::Dumper::Dumper(\@ret);
 
   return @ret if wantarray;
   return $ret[0];
@@ -234,6 +237,7 @@ sub _load_by_sql_sth
 
   my $sql_name = $class->_sql_name($params);
 
+  warn "$class SQL (select) PARAMS " . Data::Dumper::Dumper(\@_);
   $sth->execute(@_) or
     die "TODO: Execute ($sql_name) failed";
   my $rows = $sth->fetchall_arrayref() or

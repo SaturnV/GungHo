@@ -10,6 +10,8 @@ use strict;
 use warnings;
 use feature ':5.10';
 
+use Carp;
+
 ###### INIT ###################################################################
 
 use parent qw( GungHo::Type::Any );
@@ -43,7 +45,7 @@ sub new
 sub Validate
 {
   my $self = shift;
-  die "TODO::TypeError[$TypeName]: Doesn't look good."
+  confess "TODO::TypeError[$TypeName]: Doesn't look good."
     unless ($_[0] ~~ $self->{'match'});
 }
 
