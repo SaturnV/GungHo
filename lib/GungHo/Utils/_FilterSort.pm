@@ -239,7 +239,7 @@ sub _load_by_sql_instantiate
     if (@cmps)
     {
       my $sub = $#cmps ? join(' || ', map { "($_)" } @cmps) : $cmps[0];
-      warn "cmp: $sub";
+      # warn "cmp: $sub";
       $sub = eval "sub { $sub }";
       @ret = sort { $sub->() } @ret;
     }
