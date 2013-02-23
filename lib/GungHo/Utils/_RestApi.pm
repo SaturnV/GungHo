@@ -460,16 +460,17 @@ sub api_duplicate
 
 # ==== testing ================================================================
 
-sub create_objs_api
+sub create_objs_api_
 {
   my $class = shift;
   my $params = { 'user' => '+' };
-  my @ret = map { $class->api_create_($params, $_)->GetId() } @_;
+  my @ret = map { $class->api_create_($params, $_) } @_;
   return @ret if wantarray;
   return $ret[0];
 }
+sub create_objs_api { return map { $_->GetId() } shift->create_objs_api_(@_) }
 
-sub create_objs_raw
+sub create_objs_raw_
 {
   my $class = shift;
 
@@ -480,14 +481,15 @@ sub create_objs_raw
                   $rels ?
                       $obj->SaveRelationships($rels) :
                       $obj->Save();
-                  $obj->GetId()
+                  $obj
                 } @_;
 
   return @ret if wantarray;
   return $ret[0];
 }
+sub create_objs_raw { return map { $_->GetId() } shift->create_objs_raw_(@_) }
 
-sub create_objs_tweaked
+sub create_objs_tweaked_
 {
   my $class = shift;
 
@@ -499,11 +501,15 @@ sub create_objs_tweaked
                   $rels ?
                       $obj->SaveRelationships($rels) :
                       $obj->Save();
-                  $obj->GetId()
+                  $obj
                 } @_;
 
   return @ret if wantarray;
   return $ret[0];
+}
+sub create_objs_tweaked
+{
+  return map { $_->GetId() } shift->create_objs_tweaked_(@_);
 }
 
 # ==== Relationship + API =====================================================
