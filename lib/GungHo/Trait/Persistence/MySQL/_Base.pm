@@ -191,9 +191,9 @@ sub load_sql
   return ($dumpster, $sql);
 }
 
-# ---- instantiate ------------------------------------------------------------
+# ---- transform --------------------------------------------------------------
 
-sub _load_by_sql_instantiate
+sub _load_by_sql_transform
 {
   my $class = shift;
   my $params = shift;
@@ -218,10 +218,27 @@ sub _load_by_sql_instantiate
   @ret = $class->$t($params, @ret)
     if ($t = $params->{'&post_deserialize_map'});
 
-  @ret = map { $class->_fast_new($_) } @ret;
+  return @ret;
+}
 
-  return @ret if wantarray;
-  return $ret[0];
+
+# ---- instantiate ------------------------------------------------------------
+
+sub _load_by_sql_instantiate
+{
+  my $class = shift;
+  my $params = shift;
+  return map { $class->_fast_new($_) } @_;
+}
+
+# ---- return -----------------------------------------------------------------
+
+sub _load_by_sql_return
+{
+  my $class = shift;
+  my $params = shift;
+  return @_ if wantarray;
+  return $_[0];
 }
 
 # ---- execute / fetch --------------------------------------------------------
@@ -251,7 +268,9 @@ sub _load_by_sql_sth
   warn "TODO: Discarding loaded objects ($sql_name)"
     if (!wantarray && (scalar(@{$rows}) > 1));
 
-  return $class->_load_by_sql_instantiate($params, @{$rows});
+  return $class->_load_by_sql_return($params,
+      $class->_load_by_sql_instantiate($params,
+          $class->_load_by_sql_transform($params, @{$rows})));
 }
 
 # -----------------------------------------------------------------------------
