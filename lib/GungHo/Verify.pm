@@ -280,7 +280,7 @@ sub v_optional
       {
         my $got = shift;
         my $expected = shift;
-        return !defined($_[0]) || verify_scalar($got, $v, @_);
+        return !defined($got) || verify_scalar($got, $v, @_);
       };
 }
 sub v_opt { return v_optional(@_) }
