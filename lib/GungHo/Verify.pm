@@ -63,7 +63,7 @@ sub v_format
 {
   my ($got, $expected, $stash, $what, $msg) = @_;
 
-  $msg = shift // "Expected #{expected}# $but";
+  $msg //= "Expected #{expected}# $but";
 
   my $t;
   $msg =~ s!#\{got\}#!$t ||= make_printable($got)!eg;
@@ -371,9 +371,9 @@ sub v_array_elements
           my $got_elems = @{$got};
           _v_min_max_num(
               $min_elems, $max_elems, 'array length',
-              $got, undef, $stash);
+              $got_elems, undef, $stash);
 
-          verify_scalar($_, $elem_cmp, @_)
+          verify_scalar($_, $elem_cmp, $stash)
             foreach (@{$got});
         }
         else
