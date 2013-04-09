@@ -83,7 +83,7 @@ sub v_fail
   die "$msg\n" if $_[2]->{':die_on_error'};
   push(@{$_[2]->{':errors'}}, $msg);
   die ':stop_on_error' if $_[2]->{':stop_on_error'};
-  return 1; 
+  return 0; 
 }
 
 sub v_die
@@ -98,6 +98,7 @@ sub v_die
 sub verify_array
 {
   my ($got, $expected, $stash) = @_;
+  my $ok = 1;
 
   my $got_length = @{$got};
   my $expected_length = @{$expected};
@@ -111,12 +112,13 @@ sub verify_array
   foreach (0 .. $to_idx)
   {
     $stash->{':path'} = [@{$path}, [$_, '@']];
-    verify_scalar($got->[$_], $expected->[$_], $stash, @_);
+    $ok = 0
+      unless verify_scalar($got->[$_], $expected->[$_], $stash, @_);
   }
 
   $stash->{':path'} = $path;
 
-  return 1;
+  return $ok;
 }
 
 # $ok = verify_hash($got, $expected, \%stash)
@@ -125,6 +127,7 @@ sub verify_hash
   my $got = shift;
   my $expected = shift;
   my $stash = shift;
+  my $ok = 1;
 
   my $path = $stash->{':path'};
 
@@ -141,12 +144,13 @@ sub verify_hash
     $stash->{':path'} = [@{$path}, [$_, '%']];
 
     # TODO exists? (How to ignore non-existing elements?)
-    verify_scalar($got->{$_}, $expected->{$_}, $stash, @_);
+    $ok = 0
+      unless verify_scalar($got->{$_}, $expected->{$_}, $stash, @_);
   }
 
   $stash->{':path'} = $path;
 
-  return 1;
+  return $ok;
 }
 
 # $ok = verify_scalar($got, $expected, \%stash)
@@ -156,17 +160,15 @@ sub verify_scalar
   {
     if (ref($_[1]) eq 'ARRAY')
     {
-      return (((ref($_[0]) eq 'ARRAY') && verify_array(@_)) ||
-              v_fail(@_));
+      return ((ref($_[0]) eq 'ARRAY') && verify_array(@_));
     }
     elsif (ref($_[1]) eq 'CODE')
     {
-      return ($_[1]->(@_) || v_fail(@_));
+      return $_[1]->(@_);
     }
     elsif (ref($_[1]) eq 'HASH')
     {
-      return (((ref($_[0]) eq 'HASH') && verify_hash(@_)) ||
-              v_fail(@_));
+      return ((ref($_[0]) eq 'HASH') && verify_hash(@_));
     }
     elsif (ref($_[1]) eq 'Regexp')
     {
@@ -364,24 +366,33 @@ sub v_array_elements
   return
       sub
       {
+        my $ok = 0;
+
         if (ref($_[0]) eq 'ARRAY')
         {
           my ($got, undef, $stash) = @_;
 
           my $got_elems = @{$got};
-          _v_min_max_num(
+          $ok = _v_min_max_num(
               $min_elems, $max_elems, 'array length',
               $got_elems, undef, $stash);
 
-          verify_scalar($_, $elem_cmp, $stash)
-            foreach (@{$got});
+          my $path = $stash->{':path'};
+          foreach (0 .. $#{$got})
+          {
+            $stash->{':path'} = [@{$path}, [$_, '@']];
+
+            $ok = 0
+              unless verify_scalar($got->[$_], $elem_cmp, $stash);
+          }
+          $stash->{':path'} = $path;
         }
         else
         {
-          v_fail("Expected arrayref $but", @_);
+          v_fail("Expected ARRAY $but", @_);
         }
 
-        return 1;
+        return $ok;
       };
 }
 sub v_ary_elems { return v_array_elements(@_) }
