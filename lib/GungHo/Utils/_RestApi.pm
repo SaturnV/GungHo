@@ -109,6 +109,7 @@ sub api_create_
   $class->tweak_new_json($params->{'user'}, $json);
   my $rels = $class->split_relationships($json);
   my $obj = $class->new($json);
+  $obj->ApiVerifyObject();
   $rels ?
       # TODO mode?
       $obj->SaveRelationships($rels,
