@@ -26,7 +26,7 @@ our $TypeName = $ModName->Name();
 sub Validate
 {
   die "TODO::TypeError[$TypeName]: Not a boolean"
-    if (defined($_[1]) && ($_[1] !~ /^1?\z/));
+    if (defined($_[1]) && ($_[1] !~ /^[01]?\z/));
 }
 
 # $type->_gh_ValidatorPattern($arg_pattern)
@@ -34,7 +34,7 @@ sub _gh_ValidatorPattern
 {
   my $self = shift;
   return "die 'TODO::TypeError[$TypeName]: Not a boolean'\n" .
-         "  if (defined($_[0]) && ($_[0] !~ /^1?\\z/));\n";
+         "  if (defined($_[0]) && ($_[0] !~ /^[01]?\\z/));\n";
 }
 
 # =============================================================================

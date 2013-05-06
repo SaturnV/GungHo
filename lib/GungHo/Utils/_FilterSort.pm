@@ -167,7 +167,7 @@ sub _load_sql_builder_param
   return $ret;
 }
 
-# ---- _load_by_sql_instantiate -----------------------------------------------
+# ---- _load_by_sql_return ----------------------------------------------------
 
 sub _build_custom_sort
 {
@@ -189,10 +189,10 @@ sub __sqli_cmp_str
               (defined($_[1]) ? -1 : 0));
 }
 
-sub _load_by_sql_instantiate
+sub _load_by_sql_return
 {
   my $class = shift;
-  my @ret = $class->SUPER::_load_by_sql_instantiate(@_);
+  my @ret = $class->SUPER::_load_by_sql_return(@_);
   my $params = $_[0];
 
   if ($params->{'sort'} && (scalar(@ret) > 1))

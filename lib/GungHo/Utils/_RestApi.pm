@@ -22,6 +22,8 @@ use GungHo::SQL::Utils qw( get_col_for_attr );
 sub tweak_new_json {}
 sub tweak_duplicate_json {}
 
+sub ApiVerifyObject {}
+
 # ==== api ====================================================================
 
 # Access control:
@@ -107,6 +109,7 @@ sub api_create_
   $class->tweak_new_json($params->{'user'}, $json);
   my $rels = $class->split_relationships($json);
   my $obj = $class->new($json);
+  $obj->ApiVerifyObject();
   $rels ?
       # TODO mode?
       $obj->SaveRelationships($rels,
@@ -159,6 +162,8 @@ sub ApiUpdate
         $self->$obj_rel_set($json->{$k});
       }
     }
+
+    $self->ApiVerifyObject();
 
     %rels ?
         # TODO mode?

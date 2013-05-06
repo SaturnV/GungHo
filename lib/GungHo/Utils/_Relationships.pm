@@ -683,6 +683,10 @@ sub _SaveRelationship_has_many
   my ($obj, $save_info, $save_rels) = @_;
   return 0 unless $save_info->{'post'};
 
+  my $ri = $save_info->{'rel_info'};
+  my $rel_name = $ri->{'name'};
+  my $class = ref($obj);
+
   # NOP check
   my $mode = $save_info->{'mode'};
   return 0 if (($mode ~~ ['add', 'remove']) && !@{$save_rels});
@@ -690,19 +694,34 @@ sub _SaveRelationship_has_many
   my @arg_rel_ids;
   my @arg_rel_objs;
   my @create_rel_objs;
-  ref($_) ?
-      (blessed($_) ? push(@arg_rel_objs, $_) : push(@create_rel_objs, $_)) :
+  foreach (@{$save_rels})
+  {
+    if (ref($_))
+    {
+      if (blessed($_))
+      {
+        push(@arg_rel_objs, $_);
+      }
+      else
+      {
+        push(@create_rel_objs, $_);
+      }
+    }
+    elsif (defined($_))
+    {
       push(@arg_rel_ids, $_)
-    foreach (@{$save_rels});
+    }
+    else
+    {
+      die "Undefined value in relationship $class.$rel_name";
+    }
+  }
 
-  my $ri = $save_info->{'rel_info'};
-  my $rel_name = $ri->{'name'};
   my $chg = $save_info->{'ret'}->{':changed'}->{$rel_name};
   if ($mode eq 'remove')
   {
     if (@create_rel_objs)
     {
-      my $class = ref($obj);
       die "TODO Object create in remove in $class.$rel_name";
     }
 
@@ -858,18 +877,25 @@ sub _saverel_x
   my %new_rels_by_xrelid;
   foreach (@{$save_rels})
   {
-    if (blessed($_))
+    if (ref($_))
     {
-      $new_rels_by_xrelid{$_->$rel_xrelid_get()} = $_;
+      if (blessed($_))
+      {
+        $new_rels_by_xrelid{$_->$rel_xrelid_get()} = $_;
+      }
+      else
+      {
+        push(@create_rel_objs, $_);
+      }
     }
-    elsif (ref($_))
-    {
-      push(@create_rel_objs, $_);
-    }
-    else
+    elsif (defined($_))
     {
       $new_rels_by_xrelid{$_} = $_;
       $return_ids = 1;
+    }
+    else
+    {
+      die "Undefined value in relationship $obj_class.$rel_name";
     }
   }
 

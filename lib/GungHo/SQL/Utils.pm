@@ -12,7 +12,7 @@ use feature ':5.10';
 
 use Exporter qw( import );
 
-use GungHo::SQL::Query::Literal;
+use GungHo::SQL::Query;
 
 ###### EXPORTS ################################################################
 
