@@ -47,15 +47,32 @@ sub _map_to_custom_filter
 
 sub _map_to_attr_filter
 {
-  my ($class, $n, $v) = @_;
-  my ($op, $op_, $arg);
+  my ($class, $n, $v, $attr) = @_;
+  my @ret;
 
-  die "TODO: Bad filter value for '$n'"
-    unless (($op, $arg) = ($v =~ /^([^:]+):(.*)\z/s));
-  die "TODO: Bad operator '$op'"
-    unless ($op_ = $class->_map_to_filter_op($op));
+  die "TODO: Bad filter attribute '$n'"
+    unless $attr->HasFlag('json');
 
-  return ($n => { $op_ => $arg });
+  if ($attr->GetProperty('relationship'))
+  {
+    my $t = $class->can('_map_to_rel_filter');
+    die "TODO: $class can't filter on relationships"
+      unless $t;
+    @ret = $class->$t($n, $v, $attr);
+  }
+  else
+  {
+    my ($op, $op_, $arg);
+
+    die "TODO: Bad filter value for '$n'"
+      unless (($op, $arg) = ($v =~ /^([^:]+):(.*)\z/s));
+    die "TODO: Bad operator '$op'"
+      unless ($op_ = $class->_map_to_filter_op($op));
+
+    @ret = ($n => { $op_ => $arg });
+  }
+
+  return @ret;
 }
 
 # TODO This looks like $hit.
@@ -75,18 +92,10 @@ sub map_to_filters
     {
       if ($n !~ /^:/)
       {
-        eval
-        {
-          $attr = $meta_class->GetAttributeByName($n);
-
-          die "TODO: Bad filter attribute '$n'"
-            unless ($attr && $attr->HasFlag('json'));
-
-          push(@filters, $class->_map_to_attr_filter($n, $args->{$n}));
-        };
         push(@filters,
-            $class->_map_to_custom_filter($n, $args->{$n}, $@))
-          if $@;
+            defined($attr = $meta_class->GetAttributeByName($n)) ?
+                $class->_map_to_attr_filter($n, $args->{$n}, $attr) :
+                $class->_map_to_custom_filter($n, $args->{$n}, $@));
       }
       elsif ($n eq ':sort')
       {
