@@ -17,6 +17,8 @@ use GungHo::SQL::Query;
 use GungHo::SQL::Utils qw( get_col_for_attr build_where_clause );
 use GungHo::Utils qw( make_hashref );
 
+use List::MoreUtils qw( any );
+
 ###### METHODS ################################################################
 
 # ==== common =================================================================
@@ -90,7 +92,7 @@ sub _sql_builder
 {
   my ($class, $sql, $table_alias, $table_info, $dumpster) =
       splice(@_, 0, 5);
-  my $params = make_hashref(@_);
+  my $params = $dumpster->{'args'} = make_hashref(@_);
 
   my $param_handler = $dumpster->{'op'};
   $param_handler = $class->can("_${param_handler}_sql_builder_param")
@@ -109,6 +111,156 @@ sub _sql_builder
 }
 
 # ==== load ===================================================================
+
+# ---- Sorting ----------------------------------------------------------------
+
+sub __sqli_cmp_num
+{
+  return (defined($_[0]) ?
+              (defined($_[1]) ? $_[0] <=> $_[1] : 1) :
+              (defined($_[1]) ? -1 : 0));
+}
+
+sub __sqli_cmp_str
+{
+  return (defined($_[0]) ?
+              (defined($_[1]) ? $_[0] cmp $_[1] : 1) :
+              (defined($_[1]) ? -1 : 0));
+}
+
+sub _build_custom_sort
+{
+  my ($class, $f, $params) = @_;
+
+  my $meta_class = $class->get_meta_class();
+  my $attr = $meta_class && $meta_class->GetAttributeByName($f);
+  my $get = $attr && $attr->GetMethodName('get');
+  die "TODO Can't build comparator for '$f'"
+    unless $get;
+
+  my $type = $attr->Type();
+  my $cmp = $type && $type->isa('GungHo::Type::Number') ?
+      '__sqli_cmp_num' :
+      '__sqli_cmp_str';
+
+  return ($cmp, "\$a->$get()", "\$b->$get()");
+}
+
+sub _build_custom_sort_
+{
+  my ($class, $f, $params) = @_;
+
+  my $d = $f =~ s/^-//;
+  my ($cmp, $get_a, $get_b) =
+      $class->_build_custom_sort($f, $params);
+
+  return $d ?
+      ($cmp, $get_b, $get_a) :
+      ($cmp, $get_a, $get_b);
+}
+
+sub _build_custom_sort__
+{
+  my $class = shift;
+
+  my ($cmp, $get_a, $get_b) =
+      $class->_build_custom_sort_(@_);
+  if ($cmp)
+  {
+    $cmp = '__sqli_cmp_num' if ($cmp eq '<=>');
+    $cmp = '__sqli_cmp_str' if ($cmp eq 'cmp');
+  }
+
+  return $cmp ? ("$cmp($get_a, $get_b)") : ();
+}
+
+sub _sort_objects
+{
+  my $class = shift;
+  my $params = shift;
+
+  my @cmps =
+      map { $class->_build_custom_sort__($_, $params) }
+          @{$params->{'sort'}};
+  if (@cmps)
+  {
+    my $sub = $#cmps ? join(' || ', map { "($_)" } @cmps) : $cmps[0];
+    # warn "cmp: $sub";
+    $sub = eval "sub { $sub }";
+    return sort { $sub->() } @_;
+  }
+  else
+  {
+    return @_;
+  }
+}
+
+# TODO Better DESC handling
+sub _sql_sort_builder_field
+{
+  my $class = shift;
+  my ($sql, $table_alias, $table_info, $dumpster, $f) = @_;
+  my $ret;
+
+  my $d = $f =~ s/^-//;
+
+  if ($f !~ /^:/)
+  {
+    my $attr;
+    my $meta_class = $class->get_meta_class();
+    die "TODO: No attribute named '$f' in '$class'"
+      unless ($attr = $meta_class->GetAttributeByName($f));
+    die "TODO: Trying to access invisible field"
+      unless $attr->HasFlag('json');
+    die "TODO: Trying to sort on non-persistent attribute '$class.$f'"
+      unless $attr->HasFlag('persistent');
+
+    $ret = get_col_for_attr($table_info, $f, $table_alias);
+    $ret .= ' DESC' if $d;
+  }
+
+  return $ret;
+}
+
+sub _sql_sort_builder
+{
+  my $class = shift;
+  my ($sql, $table_alias, $table_info, $dumpster, $n, $v) = @_;
+
+  my @fs;
+  @fs = grep { $_ ne '' } split(',', $v)
+    if defined($v);
+
+  if (@fs)
+  {
+    my $t;
+    my @order_by;
+    my $sql_sort = 1;
+    foreach (@fs)
+    {
+      $t = $class->_sql_sort_builder_field(
+          $sql, $table_alias, $table_info, $dumpster, $_);
+      if (!defined($t))
+      {
+        $sql_sort = 0;
+        last;
+      }
+
+      push(@order_by, $t) if ($t ne '');
+    }
+
+    if ($sql_sort)
+    {
+      $sql->AddOrderBy(@order_by);
+    }
+    else
+    {
+      $dumpster->{'sort'} = \@fs;
+    }
+  }
+
+  return 1;
+}
 
 # ---- SQL building -----------------------------------------------------------
 
@@ -142,10 +294,7 @@ sub _load_sql_builder_param
     }
     when (':sort')
     {
-      $sql->AddOrderBy(
-          map { get_col_for_attr($table_info, $_, $table_alias) }
-              (ref($v) ? @{$v} : ($v)));
-      $ret = 1;
+      $ret = $class->_sql_sort_builder(@_);
     }
     default
     {
@@ -237,8 +386,18 @@ sub _load_by_sql_return
 {
   my $class = shift;
   my $params = shift;
-  return @_ if wantarray;
-  return $_[0];
+
+  if ($params->{'sort'} && (scalar(@_) > 1))
+  {
+    my @objs = $class->_sort_objects($params, @_);
+    return @objs if wantarray;
+    return $objs[0];
+  }
+  else
+  {
+    return @_ if wantarray;
+    return $_[0];
+  }
 }
 
 # ---- execute / fetch --------------------------------------------------------
