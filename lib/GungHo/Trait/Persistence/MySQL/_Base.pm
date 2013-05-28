@@ -130,7 +130,7 @@ sub __sqli_cmp_str
 
 sub _build_custom_sort
 {
-  my ($class, $f, $params) = @_;
+  my ($class, $f, $params, $params_q) = @_;
 
   my $meta_class = $class->get_meta_class();
   my $attr = $meta_class && $meta_class->GetAttributeByName($f);
@@ -148,11 +148,12 @@ sub _build_custom_sort
 
 sub _build_custom_sort_
 {
-  my ($class, $f, $params) = @_;
+  my $class = shift;
+  my $f = shift;
 
   my $d = $f =~ s/^-//;
   my ($cmp, $get_a, $get_b) =
-      $class->_build_custom_sort($f, $params);
+      $class->_build_custom_sort($f, @_);
 
   return $d ?
       ($cmp, $get_b, $get_a) :
@@ -180,7 +181,7 @@ sub _sort_objects
   my $params = shift;
 
   my @cmps =
-      map { $class->_build_custom_sort__($_, $params) }
+      map { $class->_build_custom_sort__($_, $params, '$params') }
           @{$params->{'sort'}};
   if (@cmps)
   {
