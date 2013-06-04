@@ -102,7 +102,7 @@ sub api_read_multiple
 #   read: n/a
 #   write: n/a (base) / delegated (related)
 #   create: checked (die)
-sub api_create_
+sub _api_create_
 {
   my ($class, $params, $json) = @_;
   $class->check_access($params->{'user'}, 'c', $json);
@@ -117,6 +117,8 @@ sub api_create_
       $obj->Save();
   return $obj;
 }
+sub api_create_ { return shift->_api_create_(@_) }
+sub api_import_ { return shift->_api_create_(@_) }
 sub api_create
 {
   return shift->api_create_(@_)->ExportJsonObject($_[0]->{'user'});
@@ -465,15 +467,19 @@ sub api_duplicate
 
 # ==== testing ================================================================
 
-sub create_objs_api_
+sub _create_objs_helper
 {
   my $class = shift;
+  my $method = shift;
   my $params = { 'user' => '+' };
-  my @ret = map { $class->api_create_($params, $_) } @_;
+  my @ret = map { $class->$method($params, $_) } @_;
   return @ret if wantarray;
   return $ret[0];
 }
+sub create_objs_api_ { return shift->_create_objs_helper('api_create_', @_) }
 sub create_objs_api { return map { $_->GetId() } shift->create_objs_api_(@_) }
+sub import_objs_api_ { return shift->_create_objs_helper('api_import_', @_) }
+sub import_objs_api { return map { $_->GetId() } shift->import_objs_api_(@_) }
 
 sub create_objs_raw_
 {
