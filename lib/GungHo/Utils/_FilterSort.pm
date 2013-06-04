@@ -30,20 +30,45 @@ use GungHo::SQL::Utils qw( get_col_for_attr );
 my %ops =
     (
       'eq' => '=',  'lt' => '<',  'gt' => '>',
-      'ne' => '<>', 'ge' => '>=', 'le' => '<=',
-      'like' => 'LIKE'
+      'ne' => '<>', 'ge' => '>=', 'le' => '<='
     );
 
 ##### SUBS ####################################################################
 
 # ==== filtering ==============================================================
 
-sub _map_to_filter_op { return $ops{$_[1]} }
-
 sub _map_to_custom_filter
 {
   my ($class, $n, $v, $die) = @_;
   die ($die // "TODO Bad filter '$n'");
+}
+
+sub _map_to_filter_op { return $ops{$_[1]} }
+
+sub _map_to_attr_filter_
+{
+  my ($class, $n, $op, $arg) = @_;
+  my @ret;
+
+  $op //= '<undef>';
+  if ($op eq 'like')
+  {
+    # TODO escape *?
+    my $arg_ = $arg // '';
+    $arg_ =~ s/([\\%_])/\\$1/g;
+    $arg_ =~ tr/*?/%_/;
+
+    @ret = ( $n => { 'LIKE' => $arg_ } )
+      unless ($arg_ eq '');
+  }
+  else
+  {
+    my $op_ = $class->_map_to_filter_op($op) or
+      die "TODO: Bad operator '$op'";
+    @ret = ( $n => { $op_ => $arg } );
+  }
+
+  return @ret;
 }
 
 sub _map_to_attr_filter
@@ -63,14 +88,12 @@ sub _map_to_attr_filter
   }
   else
   {
-    my ($op, $op_, $arg);
+    my ($op, $arg);
 
     die "TODO: Bad filter value for '$n'"
       unless (($op, $arg) = ($v =~ /^([^:]+):(.*)\z/s));
-    die "TODO: Bad operator '$op'"
-      unless ($op_ = $class->_map_to_filter_op($op));
 
-    @ret = ($n => { $op_ => $arg });
+    push(@ret, $class->_map_to_attr_filter_($n, $op, $arg));
   }
 
   return @ret;
