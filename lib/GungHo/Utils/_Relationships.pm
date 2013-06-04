@@ -11,10 +11,12 @@ package GungHo::Utils::_Relationships;
 use strict;
 use warnings;
 use feature ':5.10';
+# use mro;
 
 # use parent 'GungHo::Trait::Persistence::MySQL::_Base';
 
 use Scalar::Util qw( blessed );
+use GungHo::SQL::Utils qw( get_col_for_attr );
 
 ##### VARS ####################################################################
 
@@ -1070,6 +1072,125 @@ sub split_relationships
   }
 
   return %rels ? \%rels : undef;
+}
+
+# ==== load extensions ========================================================
+# TODO This is not very efficient. Neither at the Perl nor at the SQL level.
+
+sub __where_helper
+{
+  my ($sql,
+      $obj_relid_col,
+      $rel_class_name, $rel_relid_name,
+      $rel_id_name, $rel_ids) = @_;
+
+  my ($sub_load, $sub_sql, @sub_params);
+  foreach my $rel_id (@{$rel_ids})
+  {
+    $sub_load = $rel_class_name->load_sql(
+        $rel_relid_name => GungHo::SQL::Query->literal($obj_relid_col),
+        $rel_id_name => $rel_id);
+    ($sub_sql, @sub_params) = $sub_load->Build();
+    $sql->AddWhere("EXISTS ($sub_sql)", @sub_params);
+  }
+}
+
+# TODO This depends on __PACKAGE__ being ahead of MySQL::_Base (or whatever)
+#      in the linearized ISA path of the class using next::method, which is
+#      just one step short of using SUPER that would depend on being a
+#      subclass of MySQL::_Base. Not very elegant.
+sub _load_sql_builder_param
+{
+  my $class = shift;
+  my ($sql, $table_alias, $table_info, $dumpster, $n, $v) = @_;
+  my $ret;
+
+  my $meta_class = $class->get_meta_class();
+  my $attr = $meta_class && $meta_class->GetAttributeByName($n);
+  my $rel = $attr && $attr->GetProperty('relationship');
+
+  if ($rel)
+  {
+    my @rels;
+    if (!ref($v))
+    {
+      @rels = ($v);
+    }
+    elsif (ref($v) eq 'ARRAY')
+    {
+      @rels = @{$v};
+    }
+    else
+    {
+      die 'TODO';
+    }
+
+    if (@rels)
+    {
+      # TODO AC?
+      my $ri = $class->get_rel_info($n);
+      if ($rel eq 'belongs_to')
+      {
+        die "TODO More than one relid in belongs_to filter $class.$n"
+          if $#rels;
+        my @where = build_where_clause(
+            get_col_for_attr(
+                $table_info, $ri->{'obj_relid_name'}, $table_alias),
+            \@rels);
+        $sql->AddWhere(@where) if @where;
+      }
+      elsif ($rel eq 'has_many')
+      {
+        __where_helper(
+            $sql,
+            get_col_for_attr(
+                $table_info, $ri->{'obj_relid_name'}, $table_alias),
+            $ri->{'rel_class_name'}, $ri->{'rel_relid_name'},
+            'id', \@rels);
+      }
+      elsif ($rel eq 'many_to_many')
+      {
+        __where_helper(
+            $sql,
+            get_col_for_attr(
+                $table_info, $ri->{'obj_xobjid_name'}, $table_alias),
+            $ri->{'x_class_name'}, $ri->{'x_xobjid_name'},
+            $ri->{'x_xrelid_name'}, \@rels);
+      }
+      else
+      {
+        die 'TODO';
+      }
+    }
+
+    $ret = 1;
+  }
+
+  $ret = $class->next::method(@_)
+    unless $ret;
+
+  return $ret;
+}
+
+# ==== _FilterSort extensions =================================================
+
+# No error checking here. Load will complain.
+sub _map_to_rel_filter
+{
+  my ($class, $n, $v, $attr) = @_;
+  my @ret;
+
+  if ($v =~ /^rel:/)
+  {
+    my @rels = split(',', substr($v, 4));
+    @ret = ( $n => \@rels ) if @rels;
+  }
+  else
+  {
+    die "TODO Can't parse filter spec '$v' for $class.$n";
+  }
+
+  return @ret;
 }
 
 ##### SUCCESS #################################################################

@@ -31,7 +31,8 @@ sub new
         'group_by' => [],
         'having' => [],
         'having_params' => [],
-        'order_by' => []
+        'order_by' => [],
+        'order_by_params' => []
       };
   bless($self, $class);
 
@@ -126,7 +127,27 @@ sub AddHaving
 sub AddOrderBy
 {
   my $self = shift;
-  push(@{$self->{'order_by'}}, @_);
+
+  foreach (@_)
+  {
+    if (ref)
+    {
+      die "TODO Order by ref"
+        unless (ref eq 'ARRAY');
+      my @t = @{$_};
+      push(@{$self->{'order_by'}}, shift(@t));
+      push(@{$self->{'order_by_params'}}, @t);
+    }
+    elsif (defined)
+    {
+      push(@{$self->{'order_by'}}, $_);
+    }
+    else
+    {
+      die "TODO Order by what?";
+    }
+  }
+
   return $self;
 }
 
@@ -207,6 +228,7 @@ sub Build
   {
     local $" = ', ';
     $sql .= " ORDER BY @os";
+    push(@params, @{$self->{'order_by_params'}});
   }
 
   if ($self->{'writelock'})
