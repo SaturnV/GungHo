@@ -34,7 +34,8 @@ our %Inserts =
                          'after' => '*' ],
             'pattern_generator' => '_gh_DefaultValuePattern',
             'direct_call' => 'DefaultValue',
-            'direct_call_pattern' => '#{attr.rawset_s}#',
+            'direct_call_pattern' =>
+                'if (!#{attr.exists_e}#) { #{attr.rawset_s}# }',
             'direct_call_patterns' =>
                 {
                   'arg_value_e' => '#{type.default_pattern_e}#'
