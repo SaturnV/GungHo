@@ -540,7 +540,7 @@ sub _SaveRelationship_belongs_to
 
   my $class = ref($obj);
   my $ri = $save_info->{'rel_info'};
-  my $rel_name = $ri->{'rel_name'};
+  my $rel_name = $ri->{'name'};
 
   my $get = $ri->{'get'};
   my $old = $obj->$get();
