@@ -872,8 +872,8 @@ sub _SaveRelationship_has_many
           grep { !exists($new_rels_by_id{$_}) } keys(%old_rels_by_id);
       if (@remove_rels)
       {
-        my @to_remove = @old_rels_by_id{@remove_rels};
-        my @removed = $obj->_SaveHasMany_remove($save_info, \@to_remove);
+        my @removed = $obj->_SaveHasMany_remove(
+            $save_info, [@old_rels_by_id{@remove_rels}]);
 
         $obj->_saverel_changed($save_info, ':removed', \@removed);
 
