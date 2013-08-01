@@ -16,6 +16,8 @@ use feature ':5.10';
 # use parent 'GungHo::Trait::Persistence::MySQL::_Base';
 
 use Scalar::Util qw( blessed );
+use List::MoreUtils qw( all );
+
 use GungHo::SQL::Utils qw( get_col_for_attr );
 
 ##### VARS ####################################################################
@@ -508,6 +510,56 @@ sub load_relationships
 
 # ==== SaveRelationships ======================================================
 
+sub _saverel_remap_changed
+{
+  my ($class, $save_info, $objs, $remap) = @_;
+  my $rel_name = $save_info->{'rel_info'}->{'name'};
+  my @remapped;
+
+  foreach (@{$objs})
+  {
+    if (ref($_))
+    {
+      push(@remapped, $_);
+    }
+    elsif (defined($_))
+    {
+      die "TODO Object appeared from thin air at $class.$rel_name"
+        unless defined($remap->{$_});
+      push(@remapped, $remap->{$_});
+    }
+    else
+    {
+      die "TODO Something is wrong";
+    }
+  }
+
+  return \@remapped;
+}
+
+sub _saverel_changed
+{
+  my ($class, $save_info, $op, $objs, $remap) = @_;
+
+  my $rel_name = $save_info->{'rel_info'}->{'name'};
+  my $chg = $save_info->{'ret'}->{':changed'}->{$rel_name} //= {};
+
+  $objs = $class->_saverel_remap_changed(
+      $save_info, $objs, $remap)
+    if $remap;
+
+  if ($chg->{$op})
+  {
+    push(@{$chg->{$op}}, @{$objs});
+  }
+  else
+  {
+    $chg->{$op} = [@{$objs}];
+  }
+
+  return $chg;
+}
+
 sub _saverel_create
 {
   my ($rel_class, $obj, $save_info, $save_rels) = @_;
@@ -542,38 +594,51 @@ sub _SaveRelationship_belongs_to
   my $ri = $save_info->{'rel_info'};
   my $rel_name = $ri->{'name'};
 
-  my $get = $ri->{'get'};
-  my $old = $obj->$get();
-  my $new = $save_rels;
-  my $new_obj;
-  if (ref($new) eq 'ARRAY')
+  my ($new_ret, $new_relid, $new_obj);
+  my $old_relid = $obj->($ri->{'obj_relid_get'})();
   {
-    die "TODO Too many objects in $class.$rel_name"
-      if (scalar(@{$new}) > 1);
-    $new = $new->[0];
-  }
-  if (ref($new))
-  {
-    my $rel_relid_get = $ri->{'rel_relid_get'};
-    $new_obj = $new;
-    $new = $new->$rel_relid_get();
+    $new_ret = $save_rels;
+    if (ref($new_ret) eq 'ARRAY')
+    {
+      die "TODO Too many objects in $class.$rel_name"
+        if (scalar(@{$new_ret}) > 1);
+      $new_ret = $new_ret->[0];
+    }
+
+    if (ref($new_ret))
+    {
+      die "TODO Trying to create parent through $class.$rel_name"
+        unless blessed($new_ret);
+      $new_relid = $new_ret->($ri->{'rel_relid_get'})();
+      $new_obj = $new_ret;
+    }
+    else
+    {
+      $new_relid = $new_ret;
+    }
   }
 
+  my $nop;
   given ($save_info->{'mode'})
   {
     when ('add')
     {
       die "TODO Trying to add second parent in $class.$rel_name"
-        if (defined($old) && defined($new) &&
-            ($old ne $new));
+        if (defined($old_relid) && defined($new_relid) &&
+            ($old_relid ne $new_relid));
+      $nop = 1 unless defined($new_relid);
     }
     when ('replace')
     {
+      # TODO Optional parent
       die "TODO Trying to remove parent in $class.$rel_name with replace"
-        unless defined($new);
+        unless defined($new_relid);
+      $nop = 1 if (defined($old_relid) && ($new_relid eq $old_relid));
     }
     when ('remove')
     {
+      # TODO Optional parent
+      # TODO Remove from unrelated parent?
       die "TODO Trying to remove parent in $class.$rel_name";
     }
     default
@@ -582,20 +647,32 @@ sub _SaveRelationship_belongs_to
     }
   }
 
-  if (defined($new))
+  if (!$nop)
   {
-    if (!defined($old) || ($old ne $new))
-    {
-      my $obj_relid_set = $ri->{'obj_relid_set'};
-      $obj->$obj_relid_set($new);
+    my $get = $ri->{'get'};
+    my $set = $ri->{'set'};
+    my $obj_relid_set = $ri->{'obj_relid_set'};
 
-      my $chg = $save_info->{'ret'}->{':changed'}->{$rel_name};
-      $chg->{'obj'}->{$obj->GetId()} =
-          $chg->{'rel'}->{$new} =
-          $new_obj // $new;
+    my $old_obj = $obj->$get();
+
+    $obj->$obj_relid_set($new_relid);
+    # $obj->$set($new_obj);
+    $obj->$set(undef);
+
+    my $chg = $save_info->{'ret'}->{':changed'}->{$rel_name} = {};
+
+    $chg->{':added'} = [ $new_ret ]
+      if defined($new_relid);
+
+    if (defined($old_relid))
+    {
+      $chg->{':removed_from'} = { $old_relid => $obj };
+      $chg->{':removed'} = [ $old_obj // $old_relid ];
     }
 
-    $save_info->{'ret'}->{$rel_name} = [ $new ];
+    $chg->{':current'} = defined($new_relid) ? [ $new_ret ] : [];
+
+    $save_info->{'ret'}->{$rel_name} = [ @{$chg->{':current'}} ];
   }
 
   return 1;
@@ -605,7 +682,6 @@ sub _SaveRelationship_belongs_to
 
 # ---- _SaveHasMany_create ----------------------------------------------------
 
-# TODO change notify
 sub _SaveHasMany_create
 {
   my ($obj, $save_info, $save_rels) = @_;
@@ -624,41 +700,75 @@ sub _SaveHasMany_create
 
 # ---- _SaveHasMany_update ----------------------------------------------------
 
-# TODO change notify
 sub _SaveHasMany_update
 {
   my ($obj, $save_info, $save_rels) = @_;
 
+  my $ri = $save_info->{'rel_info'};
+  my $rel_class = $ri->{'rel_class_name'};
+  my $rel_relid_set = $ri->{'rel_relid_set'};
+  my $obj_relid_get = $ri->{'obj_relid_get'};
+  my $obj_relid = $obj->$obj_relid_get();
+
+  $rel_class->check_access(
+      $save_info->{':access'}->{'user'}, 'w', @{$save_rels})
+    if (defined($save_info->{':access'}) &&
+        ($ri->{'access_control'} eq 'rel') &&
+        $rel_class->can('check_access'));
+
+  foreach (@{$save_rels})
+  {
+    $_->$rel_relid_set($obj_relid);
+    $_->Save();
+  }
+
+  return @{$save_rels};
+}
+
+sub _SaveHasMany_update_
+{
+  my ($obj, $save_info, $to_update, @_rest) = @_;
+  my $class = ref($obj);
+  my @updated;
+
   my @ids;
   my @objs;
   ref($_) ? push(@objs, $_) : push(@ids, $_)
-    foreach (@{$save_rels});
+    foreach (@{$to_update});
 
   my $ri = $save_info->{'rel_info'};
+  my $rel_name = $ri->{'name'};
+
   my $rel_class = $ri->{'rel_class_name'};
   my $rel_relid_name = $ri->{'rel_relid_name'};
   push(@objs, $rel_class->load($rel_relid_name => \@ids))
     if @ids;
 
-  $rel_class->check_access(
-      $save_info->{':access'}->{'user'}, 'w', @objs)
-    if (defined($save_info->{':access'}) &&
-        ($ri->{'access_control'} eq 'rel') &&
-        $rel_class->can('check_access'));
+  my $rel_relid_get = $ri->{'rel_relid_get'};
+  my %removed_from =
+      map { ($_->GetId() => $_->$rel_relid_get()) }
+          @objs;
 
-  my $rel_relid_set = $ri->{'rel_relid_set'};
-  my $obj_relid_get = $ri->{'obj_relid_get'};
-  my $obj_relid = $obj->$obj_relid_get();
-  foreach (@objs)
+  @updated = $obj->_SaveHasMany_update_($save_info, \@objs, @_rest);
+
+  my $chg = $obj->_saverel_changed($save_info, ':added', \@updated);
+
+  my $rel_id;
+  my $removed_from = $chg->{':removed_from'} //= {};
+  foreach (@updated)
   {
-    $_->$rel_relid_set($obj_relid);
-    $_->Save();
+    $rel_id = ref($_) ? $_->$rel_relid_get() : $_;
+    die "TODO A rel object appeared from thin air at $class.$rel_name"
+      unless defined($removed_from{$rel_id});
+    $removed_from->{$rel_id} = $removed_from{$rel_id};
   }
+
+  return @updated;
 }
 
 # ---- _SaveHasMany_remove ----------------------------------------------------
 
-# TODO change notify
+# TODO Optional parents
 sub _SaveHasMany_remove
 {
   my ($obj, $save_info, $save_rels) = @_;
@@ -676,6 +786,9 @@ sub _SaveHasMany_remove
   $rel_class->destroy(
       'id' => [ map { ref($_) ? $_->GetId() : $_ } @{$save_rels} ],
       $rel_relid => $obj->$obj_relid_get());
+
+  # BUG: This may list items, that never were part of this relationship.
+  return @{$save_rels};
 }
 
 # ---- _SaveRelationship_has_many ---------------------------------------------
@@ -719,18 +832,16 @@ sub _SaveRelationship_has_many
     }
   }
 
-  my $chg = $save_info->{'ret'}->{':changed'}->{$rel_name};
+  my $current;
   if ($mode eq 'remove')
   {
-    if (@create_rel_objs)
-    {
-      die "TODO Object create in remove in $class.$rel_name";
-    }
+    die "TODO Object create in remove in $class.$rel_name"
+      if @create_rel_objs;
 
-    my $remove = [@arg_rel_ids, @arg_rel_objs];
-    $obj->_SaveHasMany_remove($save_info, $remove);
-    $chg->{'rel'}->{ref($_) ? $_->GetId() : $_} = $_
-      foreach (@{$remove});
+    $obj->_saverel_changed(
+        $save_info, ':removed',
+        [$obj->_SaveHasMany_remove(
+            $save_info, [@arg_rel_ids, @arg_rel_objs])]);
   }
   else
   {
@@ -753,16 +864,21 @@ sub _SaveRelationship_has_many
     $new_rels_by_id{$_} = $_ foreach (@arg_rel_ids);
     $new_rels_by_id{$_->GetId()} = $_ foreach (@arg_rel_objs);
 
+    my %cur_rels_by_id = %old_rels_by_id;
+
     if ($mode eq 'replace')
     {
       my @remove_rels =
           grep { !exists($new_rels_by_id{$_}) } keys(%old_rels_by_id);
       if (@remove_rels)
       {
-        my $remove = [@old_rels_by_id{@remove_rels}];
-        $obj->_SaveHasMany_remove($save_info, $remove);
-        $chg->{'rel'}->{ref($_) ? $_->GetId() : $_} = $_
-          foreach (@{$remove});
+        my @to_remove = @old_rels_by_id{@remove_rels};
+        my @removed = $obj->_SaveHasMany_remove($save_info, \@to_remove);
+
+        $obj->_saverel_changed($save_info, ':removed', \@removed);
+
+        delete($cur_rels_by_id{ref($_) ? $_->GetId() : $_})
+          foreach (@removed);
       }
     }
 
@@ -776,29 +892,41 @@ sub _SaveRelationship_has_many
     if (@update_ids)
     {
       # \@hash{@keys} === map { \$hash{$_} } @keys
-      my $update = [@new_rels_by_id{@update_ids}];
-      $obj->_SaveHasMany_update($save_info, $update);
-      $chg->{'rel'}->{ref($_) ? $_->GetId() : $_} = $_
-          foreach (@{$update});
+      my @to_update = @new_rels_by_id{@update_ids};
+      $cur_rels_by_id{ref($_) ? $_->GetId() : $_} = $_
+        foreach ($obj->_SaveHasMany_update_($save_info, \@to_update));
     }
 
     if (@create_rel_objs)
     {
+      my @new_rels = $obj->_SaveHasMany_create(
+          $save_info, \@create_rel_objs);
+      $obj->_saverel_changed($save_info, ':added', \@new_rels);
+
       my $id;
-      foreach ($obj->_SaveHasMany_create($save_info, \@create_rel_objs))
+      foreach (@new_rels)
       {
-        $new_rels_by_id{$id = $_->GetId()} = $_;
-        $chg->{'rel'}->{$id} = $_;
+        $id = ref($_) ? $_->GetId() : $_;
+        $new_rels_by_id{$id} = $_;
+        $cur_rels_by_id{$id} = $_
       }
     }
+
+    my $chg = $save_info->{'ret'}->{':changed'}->{$rel_name} //= {};
+    $current = $chg->{':current'} = [values(%cur_rels_by_id)];
 
     $save_info->{'ret'}->{$rel_name} = @arg_rel_ids ?
         [ keys(%new_rels_by_id) ] :
         [ values(%new_rels_by_id) ];
   }
 
-  # TODO
-  $chg->{'obj'}->{$obj->GetId()} = 1;
+  my $set = $ri->{'set'};
+  # $obj->$set(
+  #     ($current && ((all { !ref } @{$current}) ||
+  #                   (all { ref } @{$current}))) ?
+  #         [@{$current}] :
+  #         undef);
+  $obj->$set(undef);
 
   return 1;
 }
@@ -849,10 +977,14 @@ sub _saverel_x_removerel
   my $x_xrelid = $ri->{'x_xrelid_name'};
   my $x_xobjid = $ri->{'x_xobjid_name'};
   my $obj_xobjid_get = $ri->{'obj_xobjid_get'};
+
   my $obj_xobjid = $save_obj->$obj_xobjid_get();
   $x_class->destroy(
       $x_xobjid => $save_obj->$obj_xobjid_get(),
       $x_xrelid => $save_rels);
+
+  # BUG: This may list items, that never were part of this relationship.
+  return @{$save_rels};
 }
 
 # ---- _saverel_x -------------------------------------------------------------
@@ -901,15 +1033,16 @@ sub _saverel_x
     }
   }
 
-  my $chg = $save_info->{'ret'}->{':changed'}->{$rel_name};
+  my $current;
   if ($mode eq 'remove')
   {
     die "TODO Object create in remove in $obj_class.$rel_name"
       if @create_rel_objs;
-    my $remove = [keys(%new_rels_by_xrelid)];
-    $x_class->_saverel_x_removerel($save_obj, $save_info, $remove);
-    $chg->{'rel'}->{$_} = $new_rels_by_xrelid{$_}
-      foreach (@{$remove});
+
+    my @removed = $x_class->_saverel_x_removerel(
+        $save_obj, $save_info, [keys(%new_rels_by_xrelid)]);
+    $x_class->_saverel_changed(
+        $save_info, ':removed', \@removed, \%new_rels_by_xrelid);
   }
   else
   {
@@ -927,6 +1060,8 @@ sub _saverel_x
             $x_class->load($x_xobjid_name => $obj_xobjid)
       if (($mode eq 'replace') || %new_rels_by_xrelid);
 
+    my %cur_xrelids = %old_xrelids;
+
     if (@create_rel_objs)
     {
       $new_rels_by_xrelid{$_->$rel_xrelid_get()} = $_
@@ -940,9 +1075,12 @@ sub _saverel_x
           grep { !exists($new_rels_by_xrelid{$_}) } keys(%old_xrelids);
       if (@remove_xrelids)
       {
-        $x_class->_saverel_x_removerel(
+        my @removed = $x_class->_saverel_x_removerel(
             $save_obj, $save_info, \@remove_xrelids);
-        $chg->{'rel'}->{$_} = $_ foreach (@remove_xrelids);
+        $x_class->_saverel_changed(
+            $save_info, ':removed', \@removed);
+        # TODO Returned rels, xs
+        delete($cur_xrelids{$_}) foreach (@removed);
       }
     }
 
@@ -950,19 +1088,32 @@ sub _saverel_x
         grep { !exists($old_xrelids{$_}) } keys(%new_rels_by_xrelid);
     if (@new_xrelids)
     {
-      $x_class->_saverel_x_newrel(
+      my @new_xs = $x_class->_saverel_x_newrel(
           $save_obj, $save_info, \@new_xrelids);
-      $chg->{'rel'}->{$_} = $new_rels_by_xrelid{$_}
-        foreach(@new_xrelids);
+      $x_class->_saverel_changed(
+          $save_info, ':added',
+          [ map { $_->$x_xrelid_get() } @new_xs ],
+          \%new_rels_by_xrelid);
+      $cur_xrelids{$_->$x_xrelid_get()} = 1 foreach (@new_xs);
     }
+
+    $current =
+        [ map { $new_rels_by_xrelid{$_} // $_ } keys(%cur_xrelids) ];
+    my $chg = $save_info->{'ret'}->{':changed'}->{$rel_name} //= {};
+    $chg->{':current'} = [@{$current}];
 
     $save_info->{'ret'}->{$rel_name} = $return_ids ?
        [ keys(%new_rels_by_xrelid) ] :
        [ values(%new_rels_by_xrelid) ];
   }
 
-  # TODO
-  $chg->{'obj'}->{$save_obj->GetId()} = 1;
+  my $set = $ri->{'set'};
+  # $save_obj->$set(
+  #     ($current && ((all { !ref } @{$current}) ||
+  #                   (all { ref } @{$current}))) ?
+  #         [@{$current}] :
+  #         undef);
+  $save_obj->$set(undef);
 
   return 1;
 }
