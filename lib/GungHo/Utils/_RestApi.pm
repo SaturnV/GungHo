@@ -535,11 +535,15 @@ sub _saverel_create
 sub _SaveHasMany_remove
 {
   my ($obj, $save_info, $save_rels) = @_;
+
   my $u = $save_info->{':access'}->{'user'} // '+';
   my $ri = $save_info->{'rel_info'};
   my $rel_class = $ri->{'rel_class_name'};
+
   $rel_class->api_delete({ 'user' => $u }, ref($_) ? $_->GetId() : $_)
     foreach (@{$save_rels});
+
+  return @{$save_rels};
 }
 
 ##### SUCCESS #################################################################
