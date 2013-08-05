@@ -757,7 +757,7 @@ sub _SaveHasMany_update_
   my $removed_from = $chg->{':removed_from'} //= {};
   foreach (@updated)
   {
-    $rel_id = ref($_) ? $_->$rel_relid_get() : $_;
+    $rel_id = ref($_) ? $_->GetId() : $_;
     die "TODO A rel object appeared from thin air at $class.$rel_name"
       unless defined($removed_from{$rel_id});
     $removed_from->{$rel_id} = $removed_from{$rel_id};
