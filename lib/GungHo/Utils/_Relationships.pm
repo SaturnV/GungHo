@@ -749,7 +749,7 @@ sub _SaveHasMany_update_
       map { ($_->GetId() => $_->$rel_relid_get()) }
           @objs;
 
-  @updated = $obj->_SaveHasMany_update_($save_info, \@objs, @_rest);
+  @updated = $obj->_SaveHasMany_update($save_info, \@objs, @_rest);
 
   my $chg = $obj->_saverel_changed($save_info, ':added', \@updated);
 
