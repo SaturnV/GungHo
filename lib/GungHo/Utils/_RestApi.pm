@@ -430,7 +430,11 @@ sub _duplicate
     }
   }
 
-  return @objs ? [ map { $_->ExportJsonObject($user) } @objs ] : undef;
+  @objs = map { $_->ExportJsonObject($user) } @objs;
+  $class->tweak_duplicate_json($user, $_)
+    foreach (@objs);
+
+  return @objs ? \@objs : undef;
 }
 
 sub api_duplicate_
@@ -443,7 +447,6 @@ sub api_duplicate_
       $class->api_read_(
           { 'user' => $params->{'user'} },
           $id))->[0];
-  $class->tweak_duplicate_json($params->{'user'}, $copy);
   # warn "Duplicated object looks like this: " . Data::Dumper::Dumper($copy);
 
   $obj = $class->api_create_(
