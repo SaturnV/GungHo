@@ -193,13 +193,11 @@ sub api_update
 #   read: n/a
 #   write: checked (die)
 #   create: n/a
-sub api_delete
+sub ApiDelete
 {
-  my ($class, $params, $id) = @_;
+  # my ($obj, $params) = @_;
+  my $obj = $_[0];
 
-  my $obj = $class->load(
-      ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' },
-      'id' => $id);
   if ($obj->can('SetDeleted'))
   {
     $obj->SetDeleted(1);
@@ -211,6 +209,16 @@ sub api_delete
   }
 
   return undef;
+}
+
+sub api_delete
+{
+  my ($class, $params, $id) = @_;
+
+  my $obj = $class->load(
+      ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' },
+      'id' => $id);
+  return $obj->ApiDelete($params);
 }
 
 # Access control:
