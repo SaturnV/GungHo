@@ -106,7 +106,7 @@ sub _api_create_
 {
   my ($class, $params, $json) = @_;
   $class->check_access($params->{'user'}, 'c', $json);
-  $class->tweak_new_json($params->{'user'}, $json);
+  $class->tweak_new_json($params, $json);
   my $rels = $class->split_relationships($json);
   my $obj = $class->new($json);
   $obj->ApiVerifyObject();
@@ -381,8 +381,10 @@ sub api_remove_rel
 sub _duplicate
 {
   my $class = shift;
-  my $user = shift;
+  my $params = shift;
   my @objs;
+
+  my $user = $params->{'user'};
 
   if (@_)
   {
@@ -432,14 +434,14 @@ sub _duplicate
 
       foreach (@objs)
       {
-        $_->{$rel_name} = $rel_class->_duplicate($user, @{$_->{$rel_name}})
+        $_->{$rel_name} = $rel_class->_duplicate($params, @{$_->{$rel_name}})
           if ($_->{$rel_name} && @{$_->{$rel_name}});
       }
     }
   }
 
   @objs = map { $_->ExportJsonObject($user) } @objs;
-  $class->tweak_duplicate_json($user, $_)
+  $class->tweak_duplicate_json($params, $_)
     foreach (@objs);
 
   return @objs ? \@objs : undef;
@@ -451,7 +453,7 @@ sub api_duplicate_
   my $obj;
 
   my $copy = $class->_duplicate(
-      $params->{'user'},
+      $params,
       $class->api_read_(
           { 'user' => $params->{'user'} },
           $id))->[0];
@@ -482,14 +484,25 @@ sub _create_objs_helper
 {
   my $class = shift;
   my $method = shift;
-  my $params = { 'user' => '+' };
+  my $params = shift;
+
+  $params->{'user'} //= '+';
+
   my @ret = map { $class->$method($params, $_) } @_;
   return @ret if wantarray;
   return $ret[0];
 }
-sub create_objs_api_ { return shift->_create_objs_helper('api_create_', @_) }
+
+sub create_objs_api_
+{
+  return shift->_create_objs_helper('api_create_', {}, @_);
+}
 sub create_objs_api { return map { $_->GetId() } shift->create_objs_api_(@_) }
-sub import_objs_api_ { return shift->_create_objs_helper('api_import_', @_) }
+
+sub import_objs_api_
+{
+  return shift->_create_objs_helper('api_import_', { 'import' => 1 }, @_);
+}
 sub import_objs_api { return map { $_->GetId() } shift->import_objs_api_(@_) }
 
 sub create_objs_raw_
@@ -517,7 +530,7 @@ sub create_objs_tweaked_
 
   my @ret = map {
                   my ($obj, $rels);
-                  $class->tweak_new_json('+', $_);
+                  $class->tweak_new_json({ 'user' => '+' }, $_);
                   $rels = $class->split_relationships($_);
                   $obj = $class->new($_);
                   $rels ?
