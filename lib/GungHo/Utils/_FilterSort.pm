@@ -39,8 +39,8 @@ my %ops =
 
 sub _map_to_custom_filter
 {
-  my ($class, $n, $v, $die) = @_;
-  die ($die // "TODO Bad filter '$n'");
+  my ($class, $n, $v) = @_;
+  die "TODO Bad filter '$n'";
 }
 
 sub _map_to_filter_op { return $ops{$_[1]} }
