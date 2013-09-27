@@ -30,6 +30,30 @@ sub _sql_name
   return "$class/" . ($_[1]->{'name'} // 'anon_sql');
 }
 
+sub _sql_make_dumpster
+{
+  my $class = shift;
+  my $op = shift;
+  my $params = make_hashref(@_);
+
+  my $table_info = $class->get_sql_table_info();
+  # {
+  #   'table' => 'alma',
+  #   'attributes' => [qw( id alma atom )],
+  #   'columns' => [qw( id name atom )],
+  #   ? 'attr_column_map' => { 'attr' => 'col' },
+  #   'key' => [qw( id )],
+  # }
+
+  return
+      {
+        'name' => "anon_$op",
+        'op' => $op,
+        'params' => $params,
+        'table_info' => $table_info
+      };
+}
+
 # ---- DBI --------------------------------------------------------------------
 
 # my ($params, $sth, @sql_params) = $class->_prepare_sql(@_);
@@ -90,15 +114,14 @@ sub _sql_builder_param
 
 sub _sql_builder
 {
-  my ($class, $sql, $table_alias, $table_info, $dumpster) =
-      splice(@_, 0, 5);
-  my $params = $dumpster->{'args'} = make_hashref(@_);
+  my ($class, $sql, $table_alias, $table_info, $dumpster) = @_;
 
   my $param_handler = $dumpster->{'op'};
   $param_handler = $class->can("_${param_handler}_sql_builder_param")
     if $param_handler;
   $param_handler //= $class->can('_sql_builder_param');
 
+  my $params = $dumpster->{'params'};
   foreach (keys(%{$params}))
   {
     $dumpster->{$_} = $params->{$_}
@@ -317,26 +340,16 @@ sub _load_sql_builder
 sub load_sql
 {
   my $class = shift;
-  my $dumpster = { 'name' => 'anon_load', 'op' => 'load' };
-
-  my $table_info = $dumpster->{'table_info'} =
-      $class->get_sql_table_info();
-  # {
-  #   'table' => 'alma',
-  #   'attributes' => [qw( id alma atom )],
-  #   'columns' => [qw( id name atom )],
-  #   ? 'attr_column_map' => { 'attr' => 'col' },
-  #   'key' => [qw( id )],
-  # }
+  my $dumpster = $class->_sql_make_dumpster('load', @_);
 
   my $sql = GungHo::SQL::Query->new('SELECT');
+  my $table_info = $dumpster->{'table_info'};
   my $table_alias = $dumpster->{'table_aliases'}->{'root'} =
       $sql->AddFrom($table_info->{'table'});
   $sql->AddSelect(
       map { "$table_alias.$_" } @{$table_info->{'columns'}});
   $class->_load_sql_builder(
-      $sql, $table_alias, $table_info,
-      $dumpster, @_);
+      $sql, $table_alias, $table_info, $dumpster);
 
   return ($dumpster, $sql);
 }
@@ -469,18 +482,15 @@ sub _destroy_sql_builder
 sub destroy_sql
 {
   my $class = shift;
-  my $dumpster = { 'name' => 'anon_destroy', 'op' => 'destroy' };
-
-  my $table_info = $dumpster->{'table_info'} =
-      $class->get_sql_table_info();
+  my $dumpster = $class->_sql_make_dumpster('destroy', @_);
 
   my $sql = GungHo::SQL::Query->new('delete');
+  my $table_info = $dumpster->{'table_info'};
   my $table_alias = $dumpster->{'table_aliases'}->{'root'} =
       $sql->AddFrom($table_info->{'table'});
 
   $class->_destroy_sql_builder(
-      $sql, $table_alias, $table_info,
-      $dumpster, @_);
+      $sql, $table_alias, $table_info, $dumpster);
 
   return ($dumpster, $sql);
 }
