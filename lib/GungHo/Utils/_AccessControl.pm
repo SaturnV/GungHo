@@ -65,9 +65,8 @@ sub _check_object_access
   $user = shift;
   $mode = shift;
 
-  if (($mode ne 'c') && $x_classes && @_)
+  if (($mode ne 'create') && $x_classes && @_)
   {
-    # TODO my_filter
     my @ids = map { ref($_) ? $_->GetId() : $_ } @_;
 
     my %allowed;
@@ -160,12 +159,6 @@ sub _load_sql_builder_param
             @filters);
         ($sub_sql, @sub_params) = $sub_sql->Build();
         $select->AddWhere("EXISTS ($sub_sql)", @sub_params);
-
-        # TODO Should be _load_sql_builder_param loop instead?
-        $class->_sql_builder(
-            $select, $table_alias, $class_db_descr, $dumpster,
-            $x_class_info->{'my_filter'})
-          if $x_class_info->{'my_filter'};
       }
     }
   }

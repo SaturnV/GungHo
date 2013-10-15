@@ -40,7 +40,7 @@ my %ops =
 sub _map_to_custom_filter
 {
   my ($class, $n, $v) = @_;
-  die "TODO Bad filter '$n'";
+  die "TODO Bad filter '$class.$n'";
 }
 
 sub _map_to_filter_op { return $ops{$_[1]} }

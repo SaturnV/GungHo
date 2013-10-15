@@ -567,7 +567,7 @@ sub _saverel_create
 
   my $ri = $save_info->{'rel_info'};
   $rel_class->check_access(
-      $save_info->{':access'}->{'user'}, 'c', @{$save_rels})
+      $save_info->{':access'}->{'user'}, 'create', @{$save_rels})
     if (defined($save_info->{':access'}) &&
         ($ri->{'access_control'} eq 'rel') &&
         $rel_class->can('check_access'));
@@ -711,7 +711,7 @@ sub _SaveHasMany_update
   my $obj_relid = $obj->$obj_relid_get();
 
   $rel_class->check_access(
-      $save_info->{':access'}->{'user'}, 'w', @{$save_rels})
+      $save_info->{':access'}->{'user'}, 'write', @{$save_rels})
     if (defined($save_info->{':access'}) &&
         ($ri->{'access_control'} eq 'rel') &&
         $rel_class->can('check_access'));
@@ -777,7 +777,7 @@ sub _SaveHasMany_remove
   my $ri = $save_info->{'rel_info'};
   my $rel_class = $ri->{'rel_class_name'};
   $rel_class->check_access(
-      $save_info->{':access'}->{'user'}, 'w', @_)
+      $save_info->{':access'}->{'user'}, 'write', @_)
     if (defined($save_info->{':access'}) &&
         ($ri->{'access_control'} eq 'rel') &&
         $rel_class->can('check_access'));

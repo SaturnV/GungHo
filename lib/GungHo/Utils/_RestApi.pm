@@ -34,11 +34,11 @@ sub api_list
 {
   my ($class, $params) = @_;
   my @objs = $class->load(
-      ':access' => { 'user' => $params->{'user'}, 'mode' => 'r' },
+      ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' },
       $class->map_to_filters($params->{'args'}));
   @objs = $class->load_relationships(
       $params->{'rel'},
-      { ':access' => { 'user' => $params->{'user'}, 'mode' => 'r' } },
+      { ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' } },
       @objs)
     if (@objs && $params && $params->{'rel'} && %{$params->{'rel'}});
   return [ map { $_->ExportJsonObject($params->{'user'}) } @objs ];
@@ -53,12 +53,12 @@ sub api_read_
   my ($class, $params, $id) = @_;
 
   my $obj = $class->load(
-      ':access' => { 'user' => $params->{'user'}, 'mode' => 'r' },
+      ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' },
       'id' => $id) or
     die "TODO: Can't load ${class}[$id]";
   ($obj) = $class->load_relationships(
       $params->{'rel'},
-      { ':access' => { 'user' => $params->{'user'}, 'mode' => 'r' } },
+      { ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' } },
       $obj)
     if ($params && $params->{'rel'} && %{$params->{'rel'}});
 
@@ -78,13 +78,13 @@ sub api_read_multiple_
   if (@_)
   {
     @objs = $class->load(
-        ':access' => { 'user' => $params->{'user'}, 'mode' => 'r' },
+        ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' },
         'id' => \@_) or
       die "TODO: Can't load ${class}[" . join(', ', @_) .']';
 
       @objs = $class->load_relationships(
           $params->{'rel'},
-          { ':access' => { 'user' => $params->{'user'}, 'mode' => 'r' } },
+          { ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' } },
           @objs)
         if ($params && $params->{'rel'} && %{$params->{'rel'}});
   }
@@ -105,7 +105,7 @@ sub api_read_multiple
 sub _api_create_
 {
   my ($class, $params, $json) = @_;
-  $class->check_access($params->{'user'}, 'c', $json);
+  $class->check_access($params->{'user'}, 'create', $json);
   $class->tweak_new_json($params, $json);
   my $rels = $class->split_relationships($json);
   my $obj = $class->new($json);
@@ -113,7 +113,8 @@ sub _api_create_
   $rels ?
       # TODO mode?
       $obj->SaveRelationships($rels,
-          { ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' } }) :
+          { ':access' =>
+                { 'user' => $params->{'user'}, 'mode' => 'write' } }) :
       $obj->Save();
   return $obj;
 }
@@ -170,7 +171,8 @@ sub ApiUpdate
     %rels ?
         # TODO mode?
         $self->SaveRelationships(\%rels,
-            { ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' } }) :
+            { ':access' =>
+                  { 'user' => $params->{'user'}, 'mode' => 'write' } }) :
         $self->Save();
   }
 
@@ -182,7 +184,7 @@ sub api_update
   my ($class, $params, $id, $json) = @_;
 
   my $obj = $class->load(
-      ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' },
+      ':access' => { 'user' => $params->{'user'}, 'mode' => 'write' },
       'id' => $id);
   $obj = $obj->ApiUpdate($params, $json);
 
@@ -216,7 +218,7 @@ sub api_delete
   my ($class, $params, $id) = @_;
 
   my $obj = $class->load(
-      ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' },
+      ':access' => { 'user' => $params->{'user'}, 'mode' => 'write' },
       'id' => $id);
   return $obj->ApiDelete($params);
 }
@@ -235,14 +237,14 @@ sub api_list_rel
   my $ri = $class->get_rel_info($rel_name);
   my ($obj) = $class->load_relationship(
       $ri,
-      { ':access' => { 'user' => $user, 'mode' => 'r' } },
+      { ':access' => { 'user' => $user, 'mode' => 'read' } },
       {
         'return' => ($id_or_json eq 'json') ? 'raw' : 'id',
         'filter' =>
             [$ri->{'rel_class_name'}->map_to_filters($params->{'args'})]
       },
       scalar($class->load(
-          ':access' => { 'user' => $user, 'mode' => 'r' },
+          ':access' => { 'user' => $user, 'mode' => 'read' },
           'id' => $id)));
 
   my $get = $ri->{'get'};
@@ -253,7 +255,7 @@ sub api_list_rel
     $rels = [map { $_->ExportJsonObject($user) }
         $rel_class->load_relationships(
             $params->{'rel'},
-            { ':access' => { 'user' => $user, 'mode' => 'r' } },
+            { ':access' => { 'user' => $user, 'mode' => 'read' } },
             @{$rels})];
   }
 
@@ -287,7 +289,7 @@ sub api_read_rel_
   my $related_class = ref($ros[0]);
   @ros = $related_class->load_relationships(
       $params->{'rel'},
-      { ':access' => { 'user' => $params->{'user'}, 'mode' => 'r' } },
+      { ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' } },
       @ros);
 
   return $ros[0];
@@ -307,7 +309,7 @@ sub api_add_replace_rel
   my $ret;
 
   my $obj = $class->load(
-      ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' },
+      ':access' => { 'user' => $params->{'user'}, 'mode' => 'write' },
       'id' => $id) or
     die "TODO: Can't load ${class}[$id]";
 
@@ -318,7 +320,7 @@ sub api_add_replace_rel
     # TODO mode?
     $r = $obj->SaveRelationships(
         { $rel_name => { 'mode' => $mode, 'objs' => $data_list } },
-        { ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' } })
+        { ':access' => { 'user' => $params->{'user'}, 'mode' => 'write' } })
       if (@{$data_list} || ($mode eq 'replace'));
     if ($r)
     {
@@ -359,7 +361,7 @@ sub api_remove_rel
   my ($class, $params, $id, $rel_name, $data) = @_;
 
   my $obj = $class->load(
-      ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' },
+      ':access' => { 'user' => $params->{'user'}, 'mode' => 'write' },
       'id' => $id) or
     die "TODO: Can't load ${class}[$id]";
 
@@ -369,7 +371,7 @@ sub api_remove_rel
     # TODO mode?
     $obj->SaveRelationships(
         { $rel_name => { 'mode' => 'remove', 'objs' => $data_list } },
-        { ':access' => { 'user' => $params->{'user'}, 'mode' => 'w' } })
+        { ':access' => { 'user' => $params->{'user'}, 'mode' => 'write' } })
       if @{$data_list};
   }
 
@@ -415,7 +417,7 @@ sub _duplicate
       }
     }
     @objs = $class->load_relationships(
-        $rels, { ':access' => { 'user' => $user, 'mode' => 'r' } }, @_);
+        $rels, { ':access' => { 'user' => $user, 'mode' => 'read' } }, @_);
 
     delete($_->{'id'}) foreach (@objs);
 
