@@ -680,22 +680,41 @@ sub _SaveRelationship_belongs_to
 
 # ==== _SaveRelationship_has_many ---------------------------------------------
 
+# ---- _SaveHasMany_tweak -----------------------------------------------------
+
+sub _SaveHasMany_tweak
+{
+  my ($obj, $save_info, $save_rels, $op) = @_;
+
+  my $ri = $save_info->{'rel_info'};
+  my $rel_class = $ri->{'rel_class_name'};
+  my $obj_relid_get = $ri->{'obj_relid_get'};
+  my $obj_relid = $obj->$obj_relid_get();
+
+  if ($op eq 'create')
+  {
+    my $rel_relid_name = $ri->{'rel_relid_name'};
+    $_->{$rel_relid_name} = $obj_relid
+      foreach (@{$save_rels});
+  }
+  else
+  {
+    my $rel_relid_set = $ri->{'rel_relid_set'};
+    $_->$rel_relid_set($obj_relid)
+      foreach (@{$save_rels});
+  }
+
+  return $save_rels;
+}
+
 # ---- _SaveHasMany_create ----------------------------------------------------
 
 sub _SaveHasMany_create
 {
   my ($obj, $save_info, $save_rels) = @_;
-
-  my $ri = $save_info->{'rel_info'};
-  my $rel_class = $ri->{'rel_class_name'};
-  my $rel_relid_name = $ri->{'rel_relid_name'};
-  my $obj_relid_get = $ri->{'obj_relid_get'};
-  my $obj_relid = $obj->$obj_relid_get();
-
-  $_->{$rel_relid_name} = $obj_relid
-    foreach (@{$save_rels});
-
-  return $rel_class->_saverel_create(@_);
+  my $rel_class = $save_info->{'rel_info'}->{'rel_class_name'};
+  $save_rels = $obj->_SaveHasMany_tweak($save_info, $save_rels, 'create');
+  return $rel_class->_saverel_create($obj, $save_info, $save_rels);
 }
 
 # ---- _SaveHasMany_update ----------------------------------------------------
@@ -706,9 +725,6 @@ sub _SaveHasMany_update
 
   my $ri = $save_info->{'rel_info'};
   my $rel_class = $ri->{'rel_class_name'};
-  my $rel_relid_set = $ri->{'rel_relid_set'};
-  my $obj_relid_get = $ri->{'obj_relid_get'};
-  my $obj_relid = $obj->$obj_relid_get();
 
   $rel_class->check_access(
       $save_info->{':access'}->{'user'}, 'write', @{$save_rels})
@@ -716,11 +732,8 @@ sub _SaveHasMany_update
         ($ri->{'access_control'} eq 'rel') &&
         $rel_class->can('check_access'));
 
-  foreach (@{$save_rels})
-  {
-    $_->$rel_relid_set($obj_relid);
-    $_->Save();
-  }
+  $save_rels = $obj->_SaveHasMany_tweak($save_info, $save_rels, 'update');
+  $_->Save() foreach (@{$save_rels});
 
   return @{$save_rels};
 }
