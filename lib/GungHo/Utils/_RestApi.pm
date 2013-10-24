@@ -203,6 +203,7 @@ sub ApiDelete
   if ($obj->can('SetDeleted'))
   {
     $obj->SetDeleted(1);
+    $obj->ApiVerifyObject();
     $obj->Save();
   }
   else
