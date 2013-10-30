@@ -308,9 +308,13 @@ sub _load_sql_builder_param
         {
           $sql->WriteLock();
         }
+        when ('none')
+        {
+          # Nop
+        }
         default
         {
-          die 'TODO';
+          die 'TODO' if defined($v);
         }
       }
 
