@@ -16,7 +16,7 @@ use Exporter qw( import );
 our @EXPORT = qw( v_ignore v_ign v_optional v_opt v_defined v_def
                   v_string v_str v_boolean v_bool
                   v_number v_num v_integer v_int
-                  v_array_elements v_ary_elems
+                  v_array v_hash
                   verify verify_die );
 
 # ==== Error handling =========================================================
@@ -360,9 +360,10 @@ sub v_int { return v_integer(@_) }
 
 # ---- Array ------------------------------------------------------------------
 
-sub v_array_elements
+sub v_array
 {
-  my ($elem_cmp, $min_elems, $max_elems) = @_;
+  my ($min_elems, $max_elems, @elem_cmps) = @_;
+
   return
       sub
       {
@@ -378,12 +379,17 @@ sub v_array_elements
               $got_elems, undef, $stash);
 
           my $path = $stash->{':path'};
+          my $elem_cmp_mod = @elem_cmps;
+          my $elem_cmp_i = 0;
           foreach (0 .. $#{$got})
           {
             $stash->{':path'} = [@{$path}, [$_, '@']];
 
             $ok = 0
-              unless verify_scalar($got->[$_], $elem_cmp, $stash);
+              unless verify_scalar(
+                  $got->[$_], $elem_cmps[$elem_cmp_i], $stash);
+
+            $elem_cmp_i = ($elem_cmp_i + 1) % scalar(@elem_cmps);
           }
           $stash->{':path'} = $path;
         }
@@ -395,7 +401,6 @@ sub v_array_elements
         return $ok;
       };
 }
-sub v_ary_elems { return v_array_elements(@_) }
 
 ###############################################################################
 
