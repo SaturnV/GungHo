@@ -16,7 +16,7 @@ use Exporter qw( import );
 our @EXPORT = qw( v_ignore v_ign v_optional v_opt v_defined v_def
                   v_string v_str v_boolean v_bool
                   v_number v_num v_integer v_int
-                  v_array_elements v_ary_elems
+                  v_array v_hash
                   verify verify_die );
 
 # ==== Error handling =========================================================
@@ -49,6 +49,7 @@ sub make_printable
   return $obj;
 }
 
+# $human_readable_path = make_printable_path($path_arrayref);
 sub make_printable_path
 {
   my @path;
@@ -79,17 +80,21 @@ sub v_format
 
 sub v_fail
 {
-  my $msg = v_format(@_);
-  die "$msg\n" if $_[2]->{':die_on_error'};
-  push(@{$_[2]->{':errors'}}, $msg);
-  die ':stop_on_error' if $_[2]->{':stop_on_error'};
+  # my ($got, $expected, $stash, $what, $msg) = @_;
+  if (!$_[2]->{':ignore_errors'})
+  {
+    my $msg = v_format(@_);
+    die "$msg\n" if $_[2]->{':die_on_error'};
+    push(@{$_[2]->{':errors'}}, $msg);
+    die ':stop_on_error' if $_[2]->{':stop_on_error'};
+  }
   return 0; 
 }
 
 sub v_die
 {
-  my $msg = v_format(@_);
-  die "$msg\n";
+  # my ($got, $expected, $stash, $what, $msg) = @_;
+  die v_format(@_) . "\n";
 }
 
 # ==== Deep comparators =======================================================
@@ -221,6 +226,7 @@ sub verify_die
 }
 
 # ==== Comparators ============================================================
+# my ($got, $expected, \%stash) = @_;
 
 sub _v_defined
 {
@@ -337,7 +343,7 @@ sub v_number
                 _v_nonref($what, @_) &&
                 (Scalar::Util::looks_like_number($_[0]) ||
                  v_fail(@_, $what)) &&
-                _v_min_max_obj($min, $max, @_));
+                _v_min_max_obj($min, $max, $what, @_));
       };
 }
 sub v_num { return v_number(@_) }
@@ -353,16 +359,17 @@ sub v_integer
                 _v_nonref($what, @_) &&
                 (($_[0] =~ /^(?:0|(?:-?[1-9][0-9]*))\z/) ||
                  v_fail(@_, $what)) &&
-                _v_min_max_obj($min, $max, @_));
+                _v_min_max_obj($min, $max, $what, @_));
       };
 }
 sub v_int { return v_integer(@_) }
 
 # ---- Array ------------------------------------------------------------------
 
-sub v_array_elements
+sub v_array
 {
-  my ($elem_cmp, $min_elems, $max_elems) = @_;
+  my ($min_elems, $max_elems, @elem_cmps) = @_;
+
   return
       sub
       {
@@ -378,24 +385,112 @@ sub v_array_elements
               $got_elems, undef, $stash);
 
           my $path = $stash->{':path'};
+          my $elem_cmp_mod = @elem_cmps;
+          my $elem_cmp_i = 0;
           foreach (0 .. $#{$got})
           {
             $stash->{':path'} = [@{$path}, [$_, '@']];
 
             $ok = 0
-              unless verify_scalar($got->[$_], $elem_cmp, $stash);
+              unless verify_scalar(
+                  $got->[$_], $elem_cmps[$elem_cmp_i], $stash);
+
+            $elem_cmp_i = ($elem_cmp_i + 1) % scalar(@elem_cmps);
           }
           $stash->{':path'} = $path;
         }
         else
         {
-          v_fail("Expected ARRAY $but", @_);
+          v_fail(@_, 'ARRAY');
         }
 
         return $ok;
       };
 }
-sub v_ary_elems { return v_array_elements(@_) }
+
+# ==== Hash ===================================================================
+
+sub v_hash
+{
+  my ($min_elems, $max_elems, $required_keys, @elem_cmps) = @_;
+
+  my @required_keys;
+  @required_keys = ref($required_keys) ?
+      @{$required_keys} :
+      ($required_keys)
+    if defined($required_keys);
+
+  my @key_cmps;
+  my @value_cmps;
+  for ( my $i = 0 ; $i <= $#elem_cmps ; $i += 2 )
+  {
+    push(@key_cmps, $elem_cmps[$i]);
+    push(@value_cmps, $elem_cmps[$i + 1]);
+  }
+
+  return
+      sub
+      {
+        my $ok = 0;
+
+        if (ref($_[0]) eq 'HASH')
+        {
+          my ($got, undef, $stash) = @_;
+
+          my $got_elems = keys(%{$got});
+          $ok = _v_min_max_num(
+              $min_elems, $max_elems, 'hash length',
+              $got_elems, undef, $stash);
+
+          foreach (@required_keys)
+          {
+            if (!exists($got->{$_}))
+            {
+              v_fail(@_, undef,
+                  "Required element '$_' missing at #{path}#");
+              $ok = 0;
+            }
+          }
+
+          my ($elem_ok, $key_ok);
+          my $ignore_errors = $stash->{':ignore_errors'};
+          my $path = $stash->{':path'};
+          foreach my $k (keys(%{$got}))
+          {
+            $stash->{':path'} = [@{$path}, [$k, '%']];
+
+            $elem_ok = 0;
+            foreach my $i (0 .. $#key_cmps)
+            {
+              # local?
+              $stash->{':ignore_errors'} = 1;
+              $key_ok = !defined($key_cmps[$i]) ||
+                  eval { verify_scalar($k, $key_cmps[$i], $stash) };
+              $stash->{':ignore_errors'} = $ignore_errors;
+              die $@ if $@;
+
+              if ($key_ok)
+              {
+                $elem_ok = !defined($value_cmps[$i]) ||
+                    verify_scalar($got->{$k}, $value_cmps[$i], $stash);
+                last;
+              }
+            }
+            $ok = 0 unless $elem_ok;
+
+            v_fail($k, undef, $stash, undef, 'Invalid hash key at #{path}#')
+              unless $key_ok;
+          }
+          $stash->{':path'} = $path;
+        }
+        else
+        {
+          v_fail(@_, 'HASH');
+        }
+
+        return $ok;
+      };
+}
 
 ###############################################################################
 
