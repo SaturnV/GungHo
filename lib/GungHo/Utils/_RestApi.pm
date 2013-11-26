@@ -1,6 +1,7 @@
 #! /usr/bin/perl
 # This class is experimental. Work in progress. Hard hat area.
 # TODO: Docs, examples
+# TODO: Check ids before passing them to load
 ##### NAMESPACE ###############################################################
 
 package GungHo::Utils::_RestApi;
@@ -33,14 +34,17 @@ sub ApiVerifyObject {}
 sub api_list
 {
   my ($class, $params) = @_;
+
   my @objs = $class->load(
       ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' },
       $class->map_to_filters($params->{'args'}));
+
   @objs = $class->load_relationships(
       $params->{'rel'},
       { ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' } },
       @objs)
     if (@objs && $params && $params->{'rel'} && %{$params->{'rel'}});
+
   return [ map { $_->ExportJsonObject($params->{'user'}) } @objs ];
 }
 
@@ -52,10 +56,16 @@ sub api_read_
 {
   my ($class, $params, $id) = @_;
 
+  my @filters;
+  @filters = @{$params->{'filter'}}
+    if $params->{'filter'};
+
   my $obj = $class->load(
       ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' },
-      'id' => $id) or
+      'id' => $id,
+      @filters) or
     die "TODO: Can't load ${class}[$id]";
+
   ($obj) = $class->load_relationships(
       $params->{'rel'},
       { ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' } },
@@ -66,7 +76,9 @@ sub api_read_
 }
 sub api_read
 {
-  return shift->api_read_(@_)->ExportJsonObject($_[0]->{'user'});
+  my $class = shift;
+  my $params = $_[0];
+  return $class->api_read_(@_)->ExportJsonObject($params->{'user'});
 }
 
 sub api_read_multiple_
@@ -77,25 +89,32 @@ sub api_read_multiple_
 
   if (@_)
   {
+    my @filters;
+    @filters = @{$params->{'filter'}}
+      if $params->{'filter'};
+
     @objs = $class->load(
         ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' },
-        'id' => \@_) or
+        'id' => \@_,
+        @filters) or
       die "TODO: Can't load ${class}[" . join(', ', @_) .']';
 
-      @objs = $class->load_relationships(
-          $params->{'rel'},
-          { ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' } },
-          @objs)
-        if ($params && $params->{'rel'} && %{$params->{'rel'}});
+    @objs = $class->load_relationships(
+        $params->{'rel'},
+        { ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' } },
+        @objs)
+      if ($params && $params->{'rel'} && %{$params->{'rel'}});
   }
 
   return @objs;
 }
 sub api_read_multiple
 {
+  my $class = shift;
+  my $params = $_[0];
   return
-      map { $_->ExportJsonObject($_[0]->{'user'}) }
-          shift->api_read_multiple_(@_);
+      map { $_->ExportJsonObject($params->{'user'}) }
+          $class->api_read_multiple_(@_);
 }
 
 # Access control:
@@ -105,24 +124,31 @@ sub api_read_multiple
 sub _api_create_
 {
   my ($class, $params, $json) = @_;
+
   $class->check_access($params->{'user'}, 'create', $json);
   $class->tweak_new_json($params, $json);
+
   my $rels = $class->split_relationships($json);
+
   my $obj = $class->new($json);
   $obj->ApiVerifyObject();
+
   $rels ?
       # TODO mode?
       $obj->SaveRelationships($rels,
           { ':access' =>
                 { 'user' => $params->{'user'}, 'mode' => 'write' } }) :
       $obj->Save();
+
   return $obj;
 }
 sub api_create_ { return shift->_api_create_(@_) }
 sub api_import_ { return shift->_api_create_(@_) }
 sub api_create
 {
-  return shift->api_create_(@_)->ExportJsonObject($_[0]->{'user'});
+  my $class = shift;
+  my $params = $_[0];
+  return $class->api_create_(@_)->ExportJsonObject($params->{'user'});
 }
 
 # Access control:
@@ -221,6 +247,7 @@ sub api_delete
   my $obj = $class->load(
       ':access' => { 'user' => $params->{'user'}, 'mode' => 'write' },
       'id' => $id);
+
   return $obj->ApiDelete($params);
 }
 
@@ -228,6 +255,7 @@ sub api_delete
 #   read: delegated
 #   write: n/a
 #   create: n/a
+# TODO Don't check :access twice when not needed
 sub api_list_rel
 {
   my ($class, $params, $id, $rel_name, $id_or_json) = @_;
@@ -267,37 +295,55 @@ sub api_list_rel
 #   read: delegated
 #   write: n/a
 #   create: n/a
-# TODO: More efficient implementation
-sub api_read_rel_
+sub api_read_rel_w_parent
 {
   my ($class, $params, $id, $rel_name, $rel_id) = @_;
+  my @rels;
 
   my $obj = $class->api_read_(
       {
         'user' => $params->{'user'},
-        'rel' => { $rel_name => 'raw' }
+        'rel' =>
+            {
+              $rel_name =>
+                  {
+                    'filter' => [ 'id' => $rel_id ],
+                    'return' => 'raw'
+                  }
+            },
       }, $id) or
     die "TODO: Can't load parent (${class}[$id])";
+
   my $getter = $class->get_meta_class()->
         GetAttributeByName($rel_name)->
         GetMethodName('get');
   my $rel_objs = $obj->$getter() or
     die "TODO: No related objects";
-  my @ros = grep { $_->GetId() eq $rel_id } @{$rel_objs};
-  die "TODO: $rel_id not related to $id"
-    unless @ros;
-  die "TODO: Non-unique id $rel_id" if $#ros;
-  my $related_class = ref($ros[0]);
-  @ros = $related_class->load_relationships(
+
+  @rels = @{$rel_objs};
+
+  die "TODO: $rel_id not related to $id" unless @rels;
+  die "TODO: Non-unique id $rel_id" if $#rels;
+
+  my $related_class = ref($rels[0]);
+  @rels = $related_class->load_relationships(
       $params->{'rel'},
       { ':access' => { 'user' => $params->{'user'}, 'mode' => 'read' } },
-      @ros);
+      @rels)
+    if $params->{'rel'};
 
-  return $ros[0];
+  return ($rels[0], $obj);
+}
+sub api_read_rel_
+{
+  my ($rel) = shift->api_read_rel_w_parent(@_);
+  return $rel;
 }
 sub api_read_rel
 {
-  return shift->api_read_rel_(@_)->ExportJsonObject($_[0]->{'user'});
+  my $class = shift;
+  my $params = $_[0];
+  return $class->api_read_rel_(@_)->ExportJsonObject($params->{'user'});
 }
 
 # Access control:
@@ -344,13 +390,19 @@ sub api_add_rel { return shift->api_add_replace_rel('add', @_) }
 sub api_edit_rel
 {
   my ($class, $params, $id, $rel_name, $rel_id, $data) = @_;
-  my $rel_obj = $class->api_read_rel_(
-      { 'user' => $params->{'user'} }, $id, $rel_name, $rel_id, $data) or
+
+  my ($rel_obj, $obj) = $class->api_read_rel_w_parent(
+      { 'user' => $params->{'user'} }, $id, $rel_name, $rel_id) or
     die "TODO: Not related";
-  my $related_class = ref($rel_obj) or
-    die "TODO: Not object";
-  return $related_class->api_update(
-      { 'user' => $params->{'user'} }, $rel_id, $data);
+
+  $rel_obj = $rel_obj->ApiUpdate(
+      {
+        'user' => $params->{'user'},
+        'parent' => $obj
+      },
+      $data);
+
+  return $rel_obj->ExportJsonObject($params->{'user'});
 }
 
 # Access control:
