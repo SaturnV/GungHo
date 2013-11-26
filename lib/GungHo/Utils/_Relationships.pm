@@ -2,6 +2,7 @@
 # This class is experimental. Work in progress. Hard hat area.
 # Should play together nicely with access control.
 # TODO: Docs, examples
+# TODO: Remove calls destroy, make this easier to override
 ##### NAMESPACE ###############################################################
 
 package GungHo::Utils::_Relationships;
